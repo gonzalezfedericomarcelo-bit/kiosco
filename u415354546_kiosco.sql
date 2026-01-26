@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 26-01-2026 a las 18:16:47
+-- Tiempo de generación: 26-01-2026 a las 19:28:00
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -146,15 +146,24 @@ CREATE TABLE `configuracion` (
   `nombre_negocio` varchar(100) DEFAULT NULL,
   `telefono_whatsapp` varchar(20) DEFAULT NULL,
   `email_notificaciones` varchar(100) DEFAULT NULL,
-  `direccion_local` varchar(200) DEFAULT NULL
+  `direccion_local` varchar(200) DEFAULT NULL,
+  `color_barra_nav` varchar(7) DEFAULT '#212529',
+  `color_botones` varchar(7) DEFAULT '#0d6efd',
+  `color_fondo` varchar(7) DEFAULT '#f8f9fa',
+  `logo_url` varchar(255) DEFAULT 'logo_default.png',
+  `modulo_clientes` tinyint(1) DEFAULT 1,
+  `modulo_stock` tinyint(1) DEFAULT 1,
+  `modulo_reportes` tinyint(1) DEFAULT 1,
+  `modulo_presupuesto` tinyint(1) DEFAULT 1,
+  `modulo_fidelizacion` tinyint(1) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Volcado de datos para la tabla `configuracion`
 --
 
-INSERT INTO `configuracion` (`id`, `nombre_negocio`, `telefono_whatsapp`, `email_notificaciones`, `direccion_local`) VALUES
-(1, 'Mi Kiosco Pro', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123');
+INSERT INTO `configuracion` (`id`, `nombre_negocio`, `telefono_whatsapp`, `email_notificaciones`, `direccion_local`, `color_barra_nav`, `color_botones`, `color_fondo`, `logo_url`, `modulo_clientes`, `modulo_stock`, `modulo_reportes`, `modulo_presupuesto`, `modulo_fidelizacion`) VALUES
+(1, 'Mi Kiosco Pro', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123', '#212529', '#0d6efd', '#f8f9fa', 'uploads/logo_1769455578.png', 1, 1, 1, 1, 0);
 
 -- --------------------------------------------------------
 
@@ -193,6 +202,14 @@ CREATE TABLE `detalle_ventas` (
   `precio_historico` decimal(12,2) NOT NULL,
   `subtotal` decimal(12,2) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `detalle_ventas`
+--
+
+INSERT INTO `detalle_ventas` (`id`, `id_venta`, `id_producto`, `cantidad`, `precio_historico`, `subtotal`) VALUES
+(4, 4, 19, 1.000, 2900.00, 2900.00),
+(5, 5, 6, 1.000, 1100.00, 1100.00);
 
 -- --------------------------------------------------------
 
@@ -275,7 +292,7 @@ INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larg
 (3, '7790895001000', 'Coca-Cola Zero 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 15.000, 5.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767946/Coca-cola-Sabor-Original-Sin-Azucar-2-25-L-1-844284.jpg', 0, 1, 1, 1),
 (4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7500.00, 11500.00, NULL, 120.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772459/Fernet-Branca-750-Cc-1-758950.jpg', 1, 1, 1, 1),
 (5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 900.00, 1400.00, NULL, 4.000, 24.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772186/Cerveza-Quilmes-Clasica-Lata-473-Cc-1-21343.jpg', 0, 0, 1, 1),
-(6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 600.00, 1100.00, NULL, 60.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767784/Agua-Mineral-Sin-Gas-Villavicencio-1-5-L-1-10502.jpg', 0, 1, 1, 1),
+(6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 600.00, 1100.00, NULL, 59.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767784/Agua-Mineral-Sin-Gas-Villavicencio-1-5-L-1-10502.jpg', 0, 1, 1, 1),
 (7, '7791234567890', 'Monster Energy Green 473ml', NULL, 1, 1, 'unitario', 1100.00, 1800.00, NULL, 8.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767972/Energizante-Monster-Energy-Lata-473-Ml-1-817812.jpg', 0, 0, 1, 1),
 (8, '7790580123456', 'Alfajor Guaymallén Dulce de Leche', NULL, 2, 1, 'unitario', 300.00, 600.00, NULL, 200.000, 24.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/151/835/products/alfajor-guaymallen-blanco1-fa2b89694c925d48a515886241951564-640-0.jpg', 1, 0, 0, 1),
 (9, '7790580999999', 'Alfajor Jorgito Chocolate', NULL, 2, 1, 'unitario', 600.00, 1000.00, NULL, 45.000, 12.000, 'https://acdn.mitiendanube.com/stores/001/151/835/products/jorgito-negro1-1033c5e884e1b4334f15886245366657-640-0.jpg', 1, 0, 0, 1),
@@ -288,7 +305,7 @@ INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larg
 (16, '7794444555566', 'Yerba Playadito 500g', NULL, 3, 1, 'unitario', 1800.00, 2800.00, NULL, 40.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767909/Yerba-Mate-Playadito-Suave-500-Gr-1-224467.jpg', 1, 1, 1, 1),
 (17, '7792222333344', 'Galletitas 9 de Oro Clásicas', NULL, 3, 1, 'unitario', 800.00, 1400.00, NULL, 25.000, 5.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/768406/Bizcochos-9-De-Oro-Clasicos-200-Gr-1-14051.jpg', 0, 0, 1, 1),
 (18, '7790000000001', 'Marlboro Box 20', NULL, 4, 1, 'unitario', 2500.00, 3200.00, NULL, 100.000, 20.000, 'https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Marlboro_Logo.svg/1200px-Marlboro_Logo.svg.png', 0, 0, 0, 1),
-(19, '7790000000002', 'Philip Morris Box 20', NULL, 4, 1, 'unitario', 2300.00, 2900.00, NULL, 80.000, 20.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/214/563/products/philip-morris-box-201-9a7e6f8a42e185c69715925068991461-640-0.jpg', 0, 0, 0, 1),
+(19, '7790000000002', 'Philip Morris Box 20', NULL, 4, 1, 'unitario', 2300.00, 2900.00, NULL, 79.000, 20.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/214/563/products/philip-morris-box-201-9a7e6f8a42e185c69715925068991461-640-0.jpg', 0, 0, 0, 1),
 (20, '7790000000003', 'Camel Box 20', NULL, 4, 1, 'unitario', 2500.00, 3200.00, NULL, 40.000, 10.000, 'https://upload.wikimedia.org/wikipedia/commons/thumb/9/91/Camel_logo.svg/2560px-Camel_logo.svg.png', 0, 0, 0, 1),
 (21, '7790000000004', 'Chesterfield Box 20', NULL, 4, 1, 'unitario', 2000.00, 2600.00, NULL, 50.000, 10.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/214/563/products/chesterfield-comun-201-49666c8f8d689b9d3e15925063008479-640-0.jpg', 0, 0, 0, 1);
 
@@ -404,10 +421,21 @@ CREATE TABLE `ventas` (
   `id_cliente` int(11) NOT NULL,
   `fecha` datetime DEFAULT current_timestamp(),
   `total` decimal(12,2) NOT NULL,
+  `descuento_monto_cupon` decimal(12,2) DEFAULT 0.00,
+  `descuento_manual` decimal(12,2) DEFAULT 0.00,
+  `codigo_cupon` varchar(50) DEFAULT NULL,
   `metodo_pago` enum('Efectivo','Debito','Credito','MP','CtaCorriente','Mixto') DEFAULT 'Efectivo',
   `estado` enum('completada','anulada','pendiente_retiro') DEFAULT 'completada',
   `origen` enum('local','web') DEFAULT 'local'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `ventas`
+--
+
+INSERT INTO `ventas` (`id`, `codigo_ticket`, `id_caja_sesion`, `id_usuario`, `id_cliente`, `fecha`, `total`, `descuento_monto_cupon`, `descuento_manual`, `codigo_cupon`, `metodo_pago`, `estado`, `origen`) VALUES
+(4, NULL, 1, 1, 1, '2026-01-26 19:15:30', 2898.00, 0.00, 2.00, '', 'Efectivo', 'completada', 'local'),
+(5, NULL, 1, 1, 1, '2026-01-26 19:18:02', 1100.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
 
 --
 -- Índices para tablas volcadas
@@ -586,7 +614,7 @@ ALTER TABLE `cupones`
 -- AUTO_INCREMENT de la tabla `detalle_ventas`
 --
 ALTER TABLE `detalle_ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `encuestas`
@@ -634,7 +662,7 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `ventas`
 --
 ALTER TABLE `ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- Restricciones para tablas volcadas

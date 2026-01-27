@@ -1,10 +1,9 @@
 <?php
-// producto_formulario.php - VERSIÓN PROFESIONAL (SEGURIDAD + AUDITORÍA + DISEÑO)
+// producto_formulario.php - CON ALERTA PERSONALIZADA
 session_start();
 require_once 'includes/db.php';
 
-// 1. SEGURIDAD: Solo Admin (1) y Dueño (2) pueden entrar aquí.
-// Si es Empleado (3), lo expulsamos.
+// SEGURIDAD
 if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] > 2) {
     header("Location: dashboard.php?error=acceso_denegado");
     exit;
@@ -14,7 +13,7 @@ $id = $_GET['id'] ?? null;
 $producto = null;
 $mensaje_exito = false;
 
-// Si es edición, cargamos datos
+// CARGAR DATOS SI ES EDICIÓN
 if ($id) {
     $stmt = $conexion->prepare("SELECT * FROM productos WHERE id = ?");
     $stmt->execute([$id]);
@@ -36,6 +35,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $minimo = $_POST['stock_minimo'];
     $img = $_POST['imagen_url'];
     
+    // Fechas y Alertas
+    $vencimiento = !empty($_POST['fecha_vencimiento']) ? $_POST['fecha_vencimiento'] : null;
+    $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : null; // Si está vacío, es NULL (usa global)
+    
     // Checkboxes
     $web = isset($_POST['es_destacado_web']) ? 1 : 0;
     $celiaco = isset($_POST['es_apto_celiaco']) ? 1 : 0;
@@ -43,28 +46,27 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     try {
         if ($id) {
-            // 2. AUDITORÍA: Antes de actualizar, guardamos el rastro
-            // Detectamos si cambió el stock para registrarlo
+            // AUDITORÍA
             if($producto->stock_actual != $stock) {
                 $auditoria = $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, ?, ?, NOW())");
                 $detalles = "Cambio de Stock: De {$producto->stock_actual} a {$stock}. Producto: {$desc}";
                 $auditoria->execute([$_SESSION['usuario_id'], 'AJUSTE_STOCK', $detalles]);
             }
 
-            // ACTUALIZAR
+            // ACTUALIZAR (Incluye dias_alerta)
             $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, 
                     precio_costo=?, precio_venta=?, stock_actual=?, stock_minimo=?, imagen_url=?, 
-                    es_destacado_web=?, es_apto_celiaco=?, es_apto_vegano=? WHERE id=?";
+                    fecha_vencimiento=?, dias_alerta=?, es_destacado_web=?, es_apto_celiaco=?, es_apto_vegano=? WHERE id=?";
             $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $web, $celiaco, $vegano, $id]);
+            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano, $id]);
         } else {
             // CREAR
             $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, 
-                    precio_costo, precio_venta, stock_actual, stock_minimo, imagen_url, 
+                    precio_costo, precio_venta, stock_actual, stock_minimo, imagen_url, fecha_vencimiento, dias_alerta,
                     es_destacado_web, es_apto_celiaco, es_apto_vegano) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $web, $celiaco, $vegano]);
+            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano]);
         }
         
         $mensaje_exito = true;
@@ -144,25 +146,36 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
                             <h6 class="text-uppercase text-muted mb-3 small fw-bold">Inventario y Finanzas</h6>
                             <div class="row g-3 mb-4">
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label text-muted">Costo ($)</label>
                                     <input type="number" step="0.01" class="form-control bg-light" name="precio_costo" 
                                            value="<?php echo $producto->precio_costo ?? ''; ?>" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label text-success">Venta ($)</label>
                                     <input type="number" step="0.01" class="form-control border-success" name="precio_venta" 
                                            value="<?php echo $producto->precio_venta ?? ''; ?>" required>
                                 </div>
-                                <div class="col-md-3">
+                                <div class="col-md-2">
                                     <label class="form-label">Stock Real</label>
                                     <input type="number" step="0.001" class="form-control fw-bold" name="stock_actual" 
                                            value="<?php echo $producto->stock_actual ?? ''; ?>">
                                 </div>
-                                <div class="col-md-3">
-                                    <label class="form-label text-danger">Stock Mínimo</label>
+                                <div class="col-md-2">
+                                    <label class="form-label text-danger">Mínimo</label>
                                     <input type="number" step="0.001" class="form-control" name="stock_minimo" 
                                            value="<?php echo $producto->stock_minimo ?? '5'; ?>">
+                                </div>
+                                
+                                <div class="col-md-2">
+                                    <label class="form-label text-warning">Vencimiento</label>
+                                    <input type="date" class="form-control border-warning" name="fecha_vencimiento" 
+                                           value="<?php echo $producto->fecha_vencimiento ?? ''; ?>">
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label text-warning" style="font-size: 0.8rem;">Avisar (Días)</label>
+                                    <input type="number" class="form-control" name="dias_alerta" 
+                                           value="<?php echo $producto->dias_alerta ?? ''; ?>" placeholder="Global">
                                 </div>
                             </div>
 
@@ -211,7 +224,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
     <script>
-        // LOGICA PARA MOSTRAR ALERTA LINDA SI SE GUARDA
         <?php if($mensaje_exito): ?>
         Swal.fire({
             title: '¡Perfecto!',
@@ -226,13 +238,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         });
         <?php endif; ?>
 
-        // LOGICA PARA ERROR
         <?php if(isset($error)): ?>
-        Swal.fire({
-            title: 'Error',
-            text: '<?php echo $error; ?>',
-            icon: 'error'
-        });
+        Swal.fire({ title: 'Error', text: '<?php echo $error; ?>', icon: 'error' });
         <?php endif; ?>
     </script>
 </body>

@@ -1,10 +1,10 @@
 <?php
-// productos.php - CON FILTROS Y BUSCADOR REAL
+// productos.php - CON ALERTA DINÁMICA Y BOTÓN DE PRECIOS MASIVOS
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
-// PROCESAR ALTA
+// PROCESAR ALTA RÁPIDA
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, precio_costo, precio_venta, stock_actual, activo) VALUES (?, ?, ?, ?, ?, ?, 1)";
     $conexion->prepare($sql)->execute([$_POST['codigo'], $_POST['descripcion'], $_POST['categoria'], $_POST['precio_costo'], $_POST['precio_venta'], $_POST['stock']]);
@@ -18,6 +18,10 @@ if (isset($_GET['borrar'])) {
 // OBTENER DATOS
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
 $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN categorias c ON p.id_categoria=c.id WHERE p.activo=1 ORDER BY p.id DESC")->fetchAll();
+
+// OBTENER CONFIG GLOBAL DE VENCIMIENTO
+$config_db = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1")->fetch();
+$dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 por defecto
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -27,6 +31,11 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
     <title>Inventario</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <style>
+        .badge-vencido { background-color: #dc3545; color: white; animation: pulse 2s infinite; }
+        .badge-proximo { background-color: #ffc107; color: black; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+    </style>
 </head>
 <body class="bg-light">
 
@@ -51,10 +60,14 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
                             <?php endforeach; ?>
                         </select>
                     </div>
-                    <div class="col-md-3 text-end">
-                        <button class="btn btn-success fw-bold w-100" data-bs-toggle="modal" data-bs-target="#modalProd">
-                            <i class="bi bi-plus-lg"></i> Nuevo Producto
-                        </button>
+                    <div class="col-md-3 text-end d-flex gap-2">
+                        <a href="precios_masivos.php" class="btn btn-outline-danger" title="Aumento por Inflación">
+                            <i class="bi bi-graph-up-arrow"></i>
+                        </a>
+
+                        <a href="producto_formulario.php" class="btn btn-success fw-bold w-100">
+                            <i class="bi bi-plus-lg"></i> Nuevo
+                        </a>
                     </div>
                 </div>
             </div>
@@ -68,28 +81,48 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
                             <tr>
                                 <th class="ps-4">Descripción</th>
                                 <th>Categoría</th>
-                                <th>Costo</th>
                                 <th>Venta</th>
                                 <th>Stock</th>
+                                <th>Estado</th>
                                 <th></th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php foreach($productos as $p): ?>
+                            <?php 
+                            $hoy = date('Y-m-d');
+
+                            foreach($productos as $p): 
+                                // LÓGICA DE ALERTA DINÁMICA
+                                $dias_aviso = ($p->dias_alerta > 0) ? $p->dias_alerta : $dias_global;
+                                $fecha_alerta = date('Y-m-d', strtotime("+$dias_aviso days"));
+                                
+                                $estado_venc = '';
+                                if($p->fecha_vencimiento) {
+                                    if($p->fecha_vencimiento < $hoy) {
+                                        $estado_venc = '<span class="badge badge-vencido"><i class="bi bi-exclamation-octagon"></i> VENCIDO</span>';
+                                    } elseif($p->fecha_vencimiento <= $fecha_alerta) {
+                                        $dias_restantes = (strtotime($p->fecha_vencimiento) - strtotime($hoy)) / 86400;
+                                        $estado_venc = '<span class="badge badge-proximo"><i class="bi bi-clock-history"></i> Vence en '.ceil($dias_restantes).' días</span>';
+                                    }
+                                }
+                            ?>
                             <tr>
                                 <td class="ps-4">
                                     <div class="fw-bold text-dark"><?php echo $p->descripcion; ?></div>
                                     <small class="text-muted"><?php echo $p->codigo_barras; ?></small>
                                 </td>
                                 <td><span class="badge bg-light text-dark border"><?php echo $p->cat; ?></span></td>
-                                <td>$<?php echo $p->precio_costo; ?></td>
-                                <td class="fw-bold text-primary">$<?php echo $p->precio_venta; ?></td>
+                                <td class="fw-bold text-primary">$<?php echo number_format($p->precio_venta, 2); ?></td>
                                 <td>
                                     <span class="badge <?php echo $p->stock_actual <= $p->stock_minimo ? 'bg-danger' : 'bg-success'; ?>">
-                                        <?php echo $p->stock_actual; ?> u.
+                                        <?php echo floatval($p->stock_actual); ?> u.
                                     </span>
                                 </td>
+                                <td>
+                                    <?php echo $estado_venc; ?>
+                                </td>
                                 <td class="text-end pe-4">
+                                    <a href="producto_formulario.php?id=<?php echo $p->id; ?>" class="btn btn-sm btn-outline-primary border-0"><i class="bi bi-pencil-square"></i></a>
                                     <a href="productos.php?borrar=<?php echo $p->id; ?>" class="btn btn-sm btn-outline-danger border-0" onclick="return confirm('¿Eliminar?')"><i class="bi bi-trash"></i></a>
                                 </td>
                             </tr>
@@ -101,43 +134,9 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
             </div>
         </div>
     </div>
-
-    <div class="modal fade" id="modalProd" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header bg-dark text-white">
-                    <h5 class="modal-title">Agregar Producto</h5>
-                    <button class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body">
-                    <form method="POST">
-                        <div class="mb-2"><label class="small fw-bold">Código Barras</label><input type="text" name="codigo" class="form-control"></div>
-                        <div class="mb-2"><label class="small fw-bold">Descripción *</label><input type="text" name="descripcion" class="form-control" required></div>
-                        <div class="row g-2 mb-2">
-                            <div class="col-6"><label class="small fw-bold">Costo *</label><input type="number" step="0.01" name="precio_costo" class="form-control" required></div>
-                            <div class="col-6"><label class="small fw-bold">Venta *</label><input type="number" step="0.01" name="precio_venta" class="form-control" required></div>
-                        </div>
-                        <div class="row g-2 mb-3">
-                            <div class="col-6"><label class="small fw-bold">Stock Inicial</label><input type="number" name="stock" class="form-control" required></div>
-                            <div class="col-6">
-                                <label class="small fw-bold">Categoría</label>
-                                <select name="categoria" class="form-select">
-                                    <?php foreach($categorias as $c): ?>
-                                        <option value="<?php echo $c->id; ?>"><?php echo $c->nombre; ?></option>
-                                    <?php endforeach; ?>
-                                </select>
-                            </div>
-                        </div>
-                        <button class="btn btn-success w-100 fw-bold">GUARDAR PRODUCTO</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
+    
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // FILTRO JS INSTANTÁNEO
         const filtroTexto = document.getElementById('filtroTexto');
         const filtroCat = document.getElementById('filtroCat');
         const tabla = document.getElementById('tablaProductos');
@@ -148,7 +147,6 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
             let cat = filtroCat.value.toLowerCase();
             let visibles = 0;
 
-            // Empezamos desde 1 para saltar el encabezado
             for (let i = 1; i < filas.length; i++) {
                 let fila = filas[i];
                 let celdaDesc = fila.getElementsByTagName('td')[0];

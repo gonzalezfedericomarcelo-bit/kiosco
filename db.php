@@ -1,7 +1,5 @@
 <?php
-// public_html/kioscos/includes/db.php
-
-// DATOS DE CONEXIÓN (Cámbialos por los tuyos reales)
+// includes/db.php - CORRECCIÓN UTF-8 Y ZONA HORARIA
 $host = "localhost"; 
 $usuario = "u415354546_kiosco"; 
 $password = "Brg13abr"; 
@@ -11,11 +9,13 @@ try {
     $conexion = new PDO("mysql:host=$host;dbname=$base_datos;charset=utf8mb4", $usuario, $password);
     $conexion->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
     $conexion->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_OBJ);
+    // Forzamos UTF-8 real
+    $conexion->exec("SET NAMES 'utf8mb4'"); 
 } catch (PDOException $e) {
-    // Si falla la conexión, mostrará el error en pantalla
-    die("Error de Conexión a la Base de Datos: " . $e->getMessage());
+    die("Error crítico: " . $e->getMessage());
 }
 
-// Configuración de hora Argentina
+// Zona Horaria Argentina Definitiva
 date_default_timezone_set('America/Argentina/Buenos_Aires');
+setlocale(LC_TIME, 'es_AR.UTF-8', 'es_AR', 'esp');
 ?>

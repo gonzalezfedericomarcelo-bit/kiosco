@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 28-01-2026 a las 20:06:14
+-- Tiempo de generación: 28-01-2026 a las 22:17:37
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -69,6 +69,13 @@ CREATE TABLE `bienes_uso` (
   `ubicacion` varchar(100) DEFAULT NULL,
   `notas` text DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `bienes_uso`
+--
+
+INSERT INTO `bienes_uso` (`id`, `nombre`, `marca`, `modelo`, `numero_serie`, `fecha_compra`, `costo_compra`, `estado`, `ubicacion`, `notas`) VALUES
+(1, 'Heladera', 'philips', 'asdsam', '23432423', '2026-01-27', 50000.00, 'nuevo', 'Interior Bodega Central', '');
 
 -- --------------------------------------------------------
 
@@ -143,9 +150,9 @@ CREATE TABLE `clientes` (
 
 INSERT INTO `clientes` (`id`, `nombre`, `dni_cuit`, `email`, `password`, `telefono`, `direccion`, `foto_perfil`, `fecha_nacimiento`, `recibir_notificaciones`, `limite_credito`, `saldo_deudor`, `puntos_acumulados`, `fecha_registro`, `whatsapp`, `dni`, `saldo_actual`, `saldo_favor`) VALUES
 (1, 'Consumidor Final', '00000000', NULL, NULL, NULL, NULL, 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-01-26 11:15:20', NULL, NULL, 0.00, 0.00),
-(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', NULL, NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 66, '2026-01-26 16:43:33', '+5491166116861', '35911753', 0.00, 0.00),
+(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', NULL, NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 72, '2026-01-26 16:43:33', '+5491166116861', '35911753', 2600.00, 0.00),
 (4, 'COMPRAS TEST', NULL, '', NULL, NULL, '', 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-01-27 01:02:11', '', '34911753', 0.00, 0.00),
-(5, 'Federico', '24651315', NULL, NULL, NULL, 'Alto Comedero', 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-01-28 15:04:43', '1166116861', NULL, 0.00, 0.00);
+(5, 'Federico', '24651315', NULL, NULL, '', 'Alto Comedero', 'default_user.png', NULL, 1, 10000.00, 0.00, 0, '2026-01-28 15:04:43', '1166116861', '', 0.00, 0.00);
 
 -- --------------------------------------------------------
 
@@ -195,16 +202,18 @@ CREATE TABLE `cupones` (
   `descuento_porcentaje` int(11) DEFAULT NULL,
   `activo` tinyint(1) DEFAULT 1,
   `fecha_limite` date DEFAULT NULL,
-  `id_cliente` int(11) DEFAULT NULL COMMENT 'NULL es para todos'
+  `id_cliente` int(11) DEFAULT NULL COMMENT 'NULL es para todos',
+  `cantidad_limite` int(11) DEFAULT 0,
+  `usos_actuales` int(11) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Volcado de datos para la tabla `cupones`
 --
 
-INSERT INTO `cupones` (`id`, `codigo`, `descuento_porcentaje`, `activo`, `fecha_limite`, `id_cliente`) VALUES
-(1, 'HOLA10', 10, 1, NULL, NULL),
-(2, 'VERANO', 5, 1, '2026-01-31', 3);
+INSERT INTO `cupones` (`id`, `codigo`, `descuento_porcentaje`, `activo`, `fecha_limite`, `id_cliente`, `cantidad_limite`, `usos_actuales`) VALUES
+(1, 'HOLA10', 10, 1, NULL, NULL, 0, 0),
+(2, 'VERANO', 5, 1, '2026-01-31', 3, 0, 0);
 
 -- --------------------------------------------------------
 
@@ -253,7 +262,8 @@ INSERT INTO `detalle_ventas` (`id`, `id_venta`, `id_producto`, `cantidad`, `prec
 (28, 29, 9, 1.000, 1000.00, 1000.00),
 (29, 30, 7, 1.000, 1800.00, 1800.00),
 (30, 31, 10, 1.000, 2500.00, 2500.00),
-(31, 31, 15, 1.000, 2300.00, 2300.00);
+(31, 31, 15, 1.000, 2300.00, 2300.00),
+(32, 32, 2, 1.000, 2600.00, 2600.00);
 
 -- --------------------------------------------------------
 
@@ -350,6 +360,39 @@ CREATE TABLE `movimientos_cc` (
   `fecha` datetime DEFAULT current_timestamp()
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+--
+-- Volcado de datos para la tabla `movimientos_cc`
+--
+
+INSERT INTO `movimientos_cc` (`id`, `id_cliente`, `id_venta`, `id_usuario`, `tipo`, `monto`, `concepto`, `fecha`) VALUES
+(1, 3, 32, 1, 'debe', 2600.00, 'Compra Fiado', '2026-01-28 18:09:59'),
+(2, 3, NULL, 1, 'haber', 3000.00, '', '2026-01-28 21:14:53');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `movimientos_proveedores`
+--
+
+CREATE TABLE `movimientos_proveedores` (
+  `id` int(11) NOT NULL,
+  `id_proveedor` int(11) NOT NULL,
+  `fecha` datetime DEFAULT current_timestamp(),
+  `tipo` enum('compra','pago') NOT NULL COMMENT 'compra=aumenta deuda, pago=baja deuda',
+  `monto` decimal(12,2) NOT NULL,
+  `descripcion` varchar(255) DEFAULT NULL,
+  `comprobante` varchar(100) DEFAULT NULL,
+  `id_usuario` int(11) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+--
+-- Volcado de datos para la tabla `movimientos_proveedores`
+--
+
+INSERT INTO `movimientos_proveedores` (`id`, `id_proveedor`, `fecha`, `tipo`, `monto`, `descripcion`, `comprobante`, `id_usuario`) VALUES
+(1, 1, '2026-01-28 17:53:06', 'compra', 50000.00, '20 COCAS', '453543', 1),
+(2, 1, '2026-01-28 17:53:37', 'pago', 40000.00, 'PAGO', '', 1);
+
 -- --------------------------------------------------------
 
 --
@@ -438,7 +481,7 @@ CREATE TABLE `productos` (
 --
 
 INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larga`, `id_categoria`, `id_proveedor`, `tipo`, `precio_costo`, `precio_venta`, `precio_oferta`, `stock_actual`, `stock_minimo`, `imagen_url`, `es_destacado_web`, `es_apto_celiaco`, `es_apto_vegano`, `activo`, `fecha_vencimiento`, `dias_alerta`) VALUES
-(2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 49.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767936/Coca-cola-Sabor-Original-2-25-L-1-844274.jpg', 1, 1, 1, 1, NULL, NULL),
+(2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 48.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767936/Coca-cola-Sabor-Original-2-25-L-1-844274.jpg', 1, 1, 1, 1, NULL, NULL),
 (3, '7790895001000', 'Coca-Cola Zero 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 12.000, 5.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767946/Coca-cola-Sabor-Original-Sin-Azucar-2-25-L-1-844284.jpg', 0, 1, 1, 1, NULL, NULL),
 (4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7500.00, 11500.00, NULL, 120.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772459/Fernet-Branca-750-Cc-1-758950.jpg', 1, 1, 1, 1, NULL, NULL),
 (5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 900.00, 1400.00, NULL, 1.000, 24.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772186/Cerveza-Quilmes-Clasica-Lata-473-Cc-1-21343.jpg', 0, 0, 1, 1, NULL, NULL),
@@ -640,7 +683,8 @@ INSERT INTO `ventas` (`id`, `codigo_ticket`, `id_caja_sesion`, `id_usuario`, `id
 (28, NULL, 1, 1, 3, '2026-01-28 16:57:24', 2700.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (29, NULL, 1, 1, 3, '2026-01-28 17:00:06', 800.00, 0.00, 200.00, '', 'Efectivo', 'completada', 'local'),
 (30, NULL, 1, 1, 3, '2026-01-28 17:02:33', 1600.00, 0.00, 200.00, '', 'Efectivo', 'completada', 'local'),
-(31, NULL, 1, 1, 3, '2026-01-28 17:03:58', 4300.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
+(31, NULL, 1, 1, 3, '2026-01-28 17:03:58', 4300.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(32, NULL, 1, 1, 3, '2026-01-28 18:09:59', 2600.00, 0.00, 0.00, '', 'CtaCorriente', 'completada', 'local');
 
 --
 -- Índices para tablas volcadas
@@ -690,7 +734,8 @@ ALTER TABLE `configuracion`
 --
 ALTER TABLE `cupones`
   ADD PRIMARY KEY (`id`),
-  ADD UNIQUE KEY `codigo` (`codigo`);
+  ADD UNIQUE KEY `codigo` (`codigo`),
+  ADD UNIQUE KEY `idx_codigo` (`codigo`);
 
 --
 -- Indices de la tabla `detalle_ventas`
@@ -731,6 +776,13 @@ ALTER TABLE `movimientos_cc`
   ADD PRIMARY KEY (`id`),
   ADD KEY `id_cliente` (`id_cliente`),
   ADD KEY `id_usuario` (`id_usuario`);
+
+--
+-- Indices de la tabla `movimientos_proveedores`
+--
+ALTER TABLE `movimientos_proveedores`
+  ADD PRIMARY KEY (`id`),
+  ADD KEY `id_proveedor` (`id_proveedor`);
 
 --
 -- Indices de la tabla `permisos`
@@ -812,7 +864,7 @@ ALTER TABLE `auditoria`
 -- AUTO_INCREMENT de la tabla `bienes_uso`
 --
 ALTER TABLE `bienes_uso`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT de la tabla `cajas_sesion`
@@ -842,7 +894,7 @@ ALTER TABLE `cupones`
 -- AUTO_INCREMENT de la tabla `detalle_ventas`
 --
 ALTER TABLE `detalle_ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- AUTO_INCREMENT de la tabla `devoluciones`
@@ -872,7 +924,13 @@ ALTER TABLE `mermas`
 -- AUTO_INCREMENT de la tabla `movimientos_cc`
 --
 ALTER TABLE `movimientos_cc`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
+-- AUTO_INCREMENT de la tabla `movimientos_proveedores`
+--
+ALTER TABLE `movimientos_proveedores`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `permisos`
@@ -914,7 +972,7 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `ventas`
 --
 ALTER TABLE `ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=33;
 
 --
 -- Restricciones para tablas volcadas
@@ -938,6 +996,12 @@ ALTER TABLE `detalle_ventas`
 ALTER TABLE `movimientos_cc`
   ADD CONSTRAINT `movimientos_cc_ibfk_1` FOREIGN KEY (`id_cliente`) REFERENCES `clientes` (`id`),
   ADD CONSTRAINT `movimientos_cc_ibfk_2` FOREIGN KEY (`id_usuario`) REFERENCES `usuarios` (`id`);
+
+--
+-- Filtros para la tabla `movimientos_proveedores`
+--
+ALTER TABLE `movimientos_proveedores`
+  ADD CONSTRAINT `movimientos_proveedores_ibfk_1` FOREIGN KEY (`id_proveedor`) REFERENCES `proveedores` (`id`) ON DELETE CASCADE;
 
 --
 -- Filtros para la tabla `productos`

@@ -1,5 +1,5 @@
 <?php
-// acciones/procesar_venta.php - VERSIÓN FINAL: COMBOS DINÁMICOS + FIADO + DESCUENTOS
+// acciones/procesar_venta.php - FIX: FECHA PHP, PUNTOS DINÁMICOS Y STOCK
 session_start();
 require_once '../includes/db.php';
 header('Content-Type: application/json');
@@ -11,8 +11,6 @@ $metodo = $_POST['metodo'] ?? 'Efectivo';
 $total = $_POST['total'] ?? 0;
 $id_cliente = $_POST['id_cliente'] ?? 1;
 $user_id = $_SESSION['usuario_id'];
-
-// Datos opcionales de descuento
 $cupon_codigo = $_POST['cupon_codigo'] ?? null;
 $desc_cupon_monto = $_POST['desc_cupon_monto'] ?? 0;
 $desc_manual_monto = $_POST['desc_manual_monto'] ?? 0;
@@ -22,67 +20,67 @@ if(empty($items)) { echo json_encode(['status'=>'error', 'msg'=>'Carrito vacío'
 try {
     $conexion->beginTransaction();
 
-    // 1. INSERTAR VENTA (MODO RESILIENTE A ESTRUCTURA BD)
+    // 1. OBTENER CONFIGURACIÓN (Para puntos)
+    $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    $ratio_puntos = $conf['dinero_por_punto'] ?? 100; // Si falla, usa 100 por defecto
+    if($ratio_puntos <= 0) $ratio_puntos = 100; // Evitar división por cero
+
+    // 2. FECHA ACTUAL (Usamos PHP para asegurar zona horaria Argentina definida en db.php)
+    $fecha_actual = date('Y-m-d H:i:s');
+
+    // 3. INSERTAR VENTA
+    // Usamos TRY/CATCH interno por si la tabla no tiene las columnas de descuento aún
     try {
-        // Intenta guardar con columnas de descuento
-        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, 
-                descuento_monto_cupon, descuento_manual, codigo_cupon) 
-                VALUES (1, ?, ?, ?, ?, NOW(), 'completada', ?, ?, ?)";
+        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, descuento_monto_cupon, descuento_manual, codigo_cupon) VALUES (1, ?, ?, ?, ?, ?, 'completada', ?, ?, ?)";
         $stmt = $conexion->prepare($sql);
-        $stmt->execute([$user_id, $id_cliente, $total, $metodo, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
-        
+        $stmt->execute([$user_id, $id_cliente, $total, $metodo, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
     } catch (PDOException $e) {
-        // Si falla (ej. no corriste el SQL de descuentos), guarda modo compatible
-        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado) 
-                VALUES (1, ?, ?, ?, ?, NOW(), 'completada')";
+        // Fallback porsiaca
+        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado) VALUES (1, ?, ?, ?, ?, ?, 'completada')";
         $stmt = $conexion->prepare($sql);
-        $stmt->execute([$user_id, $id_cliente, $total, $metodo]);
+        $stmt->execute([$user_id, $id_cliente, $total, $metodo, $fecha_actual]);
     }
     
     $venta_id = $conexion->lastInsertId();
 
-    // 2. GUARDAR DETALLES Y DESCONTAR STOCK (LÓGICA DE COMBOS APLICADA)
+    // 4. DETALLES Y STOCK
     foreach($items as $item) {
-        // A. Guardar detalle de venta (siempre se guarda el ítem vendido, sea combo o no)
+        // Guardar detalle
         $stmtDetalle = $conexion->prepare("INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_historico, subtotal) VALUES (?, ?, ?, ?, ?)");
         $subtotal = $item['precio'] * $item['cantidad'];
         $stmtDetalle->execute([$venta_id, $item['id'], $item['cantidad'], $item['precio'], $subtotal]);
 
-        // B. LÓGICA DE STOCK INTELIGENTE
-        // Primero consultamos qué tipo de producto es
+        // Stock (Combo vs Unitario)
         $stmtTipo = $conexion->prepare("SELECT tipo FROM productos WHERE id = ?");
         $stmtTipo->execute([$item['id']]);
-        $productoInfo = $stmtTipo->fetch(PDO::FETCH_ASSOC);
+        $prod = $stmtTipo->fetch(PDO::FETCH_ASSOC);
         
-        if ($productoInfo && $productoInfo['tipo'] === 'combo') {
-            // ES UN COMBO: Buscamos sus hijos y descontamos a ellos
+        if ($prod && $prod['tipo'] === 'combo') {
             $stmtHijos = $conexion->prepare("SELECT id_producto_hijo, cantidad FROM productos_combo WHERE id_combo = ?");
             $stmtHijos->execute([$item['id']]);
             $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
-
             foreach ($hijos as $hijo) {
-                // Cantidad a descontar = (Cantidad que lleva el combo * Cantidad de combos vendidos)
-                $descuentoReal = $hijo['cantidad'] * $item['cantidad'];
-                
-                $stmtStockHijo = $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?");
-                $stmtStockHijo->execute([$descuentoReal, $hijo['id_producto_hijo']]);
+                $desc = $hijo['cantidad'] * $item['cantidad'];
+                $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$desc, $hijo['id_producto_hijo']]);
             }
-            // NOTA: No descontamos stock del ID del combo padre, ya que es virtual/dinámico.
-
         } else {
-            // ES UNITARIO / PESABLE / OTRO: Descuento directo
-            $stmtStock = $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?");
-            $stmtStock->execute([$item['cantidad'], $item['id']]);
+            $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$item['cantidad'], $item['id']]);
         }
     }
 
-    // 3. SI ES FIADO -> REGISTRAR DEUDA
-    if ($metodo === 'CtaCorriente' && $id_cliente > 1) {
-        $stmtCC = $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'debe', ?, 'Compra Fiado', NOW())");
-        $stmtCC->execute([$id_cliente, $venta_id, $user_id, $total]);
+    // 5. FIADO Y PUNTOS
+    if ($id_cliente > 1) { // Solo si no es Consumidor Final
+        // Fiado
+        if ($metodo === 'CtaCorriente') {
+            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'debe', ?, 'Compra Fiado', ?)")->execute([$id_cliente, $venta_id, $user_id, $total, $fecha_actual]);
+            $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual + ? WHERE id = ?")->execute([$total, $id_cliente]);
+        }
 
-        $stmtUpd = $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual + ? WHERE id = ?");
-        $stmtUpd->execute([$total, $id_cliente]);
+        // Puntos (Lógica dinámica solicitada)
+        $puntos = floor($total / $ratio_puntos);
+        if ($puntos > 0) {
+            $conexion->prepare("UPDATE clientes SET puntos_acumulados = puntos_acumulados + ? WHERE id = ?")->execute([$puntos, $id_cliente]);
+        }
     }
 
     $conexion->commit();
@@ -90,6 +88,6 @@ try {
 
 } catch (Exception $e) {
     $conexion->rollBack();
-    echo json_encode(['status' => 'error', 'msg' => 'Error Crítico: ' . $e->getMessage()]);
+    echo json_encode(['status' => 'error', 'msg' => 'Error: ' . $e->getMessage()]);
 }
 ?>

@@ -1,5 +1,5 @@
 <?php
-// configuracion.php - CON ALERTA GLOBAL DE VENCIMIENTOS
+// configuracion.php - VERSIÓN CORREGIDA: GUARDA EL VALOR DEL PUNTO
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -25,8 +25,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $mod_rep = isset($_POST['modulo_reportes']) ? 1 : 0;
     $mod_fid = isset($_POST['modulo_fidelizacion']) ? 1 : 0;
 
-    // NUEVO: Días alerta global
+    // CONFIGURACIONES GLOBALES (Vencimiento y Puntos)
     $dias_alerta = !empty($_POST['dias_alerta_vencimiento']) ? $_POST['dias_alerta_vencimiento'] : 30;
+    
+    // AQUÍ ESTABA EL ERROR: Faltaba capturar este dato
+    $dinero_punto = !empty($_POST['dinero_por_punto']) ? $_POST['dinero_por_punto'] : 100;
 
     // LOGICA SUBIDA LOGO
     if (isset($_FILES['logo']) && $_FILES['logo']['error'] == 0) {
@@ -43,17 +46,22 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         }
     }
 
-    // ACTUALIZAR TODO
+    // ACTUALIZAR TODO (Incluyendo dinero_por_punto)
     $sql = "UPDATE configuracion SET 
             nombre_negocio=?, direccion_local=?, telefono_whatsapp=?, 
             cuit=?, mensaje_ticket=?,
             color_barra_nav=?, color_botones=?, color_fondo=?, color_secundario=?, direccion_degradado=?,
             modulo_clientes=?, modulo_stock=?, modulo_reportes=?, modulo_fidelizacion=?,
-            dias_alerta_vencimiento=? 
+            dias_alerta_vencimiento=?, dinero_por_punto=? 
             WHERE id=1";
             
     $stmt = $conexion->prepare($sql);
-    $stmt->execute([$nombre, $direccion, $telefono, $cuit, $mensaje, $color_nav, $color_btn, $color_bg, $color_sec, $dir_deg, $mod_cli, $mod_stk, $mod_rep, $mod_fid, $dias_alerta]);
+    $stmt->execute([
+        $nombre, $direccion, $telefono, $cuit, $mensaje, 
+        $color_nav, $color_btn, $color_bg, $color_sec, $dir_deg, 
+        $mod_cli, $mod_stk, $mod_rep, $mod_fid, 
+        $dias_alerta, $dinero_punto
+    ]);
     
     $msg = "Configuración guardada correctamente.";
 }
@@ -78,23 +86,11 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
             --deg-dir: <?php echo $conf['direccion_degradado'] ?? '135deg'; ?>;
         }
         body { background-color: var(--color-bg); }
-        .preview-nav { background-color: var(--color-nav) !important; color: white; padding: 10px; border-radius: 5px; }
-        .preview-btn { background-color: var(--color-btn) !important; color: white; border: none; }
-        
         .preview-banner { 
             background: linear-gradient(var(--deg-dir), var(--color-btn), var(--color-sec)); 
             color: white; padding: 20px; border-radius: 10px; text-align: center; font-weight: bold;
-            transition: background 0.3s;
         }
-
-        .logo-container {
-            background-color: #e9ecef;
-            border: 1px dashed #ced4da;
-            padding: 10px;
-            border-radius: 5px;
-            display: inline-block;
-            margin-bottom: 10px;
-        }
+        .logo-container { background: #e9ecef; border: 1px dashed #ced4da; padding: 10px; border-radius: 5px; display: inline-block; margin-bottom: 10px; }
         .logo-preview-img { max-height: 80px; }
     </style>
 </head>
@@ -129,7 +125,6 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
                                         <?php endif; ?>
                                     </div>
                                     <input type="file" name="logo" class="form-control form-control-sm">
-                                    <small class="text-muted" style="font-size: 0.7rem;">Soporta PNG transparente</small>
                                 </div>
                                 <div class="col-md-8">
                                     <div class="row g-3">
@@ -147,11 +142,11 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
                                         </div>
                                         <div class="col-6">
                                             <label class="form-label">CUIT / RUT</label>
-                                            <input type="text" name="cuit" class="form-control" value="<?php echo $conf['cuit'] ?? ''; ?>" placeholder="Para el ticket">
+                                            <input type="text" name="cuit" class="form-control" value="<?php echo $conf['cuit'] ?? ''; ?>">
                                         </div>
                                         <div class="col-6">
-                                            <label class="form-label">Mensaje al Pie del Ticket</label>
-                                            <input type="text" name="mensaje_ticket" class="form-control" value="<?php echo $conf['mensaje_ticket'] ?? ''; ?>" placeholder="Ej: ¡Gracias por su visita!">
+                                            <label class="form-label">Mensaje Ticket</label>
+                                            <input type="text" name="mensaje_ticket" class="form-control" value="<?php echo $conf['mensaje_ticket'] ?? ''; ?>">
                                         </div>
                                     </div>
                                 </div>
@@ -167,87 +162,75 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
                                     <label class="form-label small fw-bold">Fondo Pantalla</label>
                                     <input type="color" name="color_fondo" class="form-control form-control-color w-100" value="<?php echo $conf['color_fondo'] ?? '#f8f9fa'; ?>">
                                 </div>
-                                
-                                <div class="col-md-12"><hr class="text-muted"></div>
-                                
                                 <div class="col-md-3">
-                                    <label class="form-label small fw-bold">Color Principal (Botones)</label>
+                                    <label class="form-label small fw-bold">Color Botones</label>
                                     <input type="color" id="inputColorBtn" name="color_botones" class="form-control form-control-color w-100" value="<?php echo $conf['color_botones'] ?? '#0d6efd'; ?>">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label small fw-bold">Color Secundario (Degradado)</label>
+                                    <label class="form-label small fw-bold">Color Secundario</label>
                                     <input type="color" id="inputColorSec" name="color_secundario" class="form-control form-control-color w-100" value="<?php echo $conf['color_secundario'] ?? '#0dcaf0'; ?>">
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label small fw-bold">Dirección del Degradado</label>
+                                    <label class="form-label small fw-bold">Dirección Degradado</label>
                                     <select id="selectDirDeg" name="direccion_degradado" class="form-select">
-                                        <option value="to right" <?php if(($conf['direccion_degradado']??'')=='to right') echo 'selected'; ?>>➡️ Horizontal (Izquierda a Derecha)</option>
-                                        <option value="to left" <?php if(($conf['direccion_degradado']??'')=='to left') echo 'selected'; ?>>⬅️ Horizontal (Derecha a Izquierda)</option>
-                                        <option value="to bottom" <?php if(($conf['direccion_degradado']??'')=='to bottom') echo 'selected'; ?>>⬇️ Vertical (Arriba a Abajo)</option>
-                                        <option value="135deg" <?php if(($conf['direccion_degradado']??'')=='135deg') echo 'selected'; ?>>↘️ Diagonal (Estándar)</option>
-                                        <option value="45deg" <?php if(($conf['direccion_degradado']??'')=='45deg') echo 'selected'; ?>>↗️ Diagonal Invertida</option>
+                                        <option value="to right" <?php if(($conf['direccion_degradado']??'')=='to right') echo 'selected'; ?>>➡️ Horizontal</option>
+                                        <option value="to left" <?php if(($conf['direccion_degradado']??'')=='to left') echo 'selected'; ?>>⬅️ Horizontal Inv</option>
+                                        <option value="to bottom" <?php if(($conf['direccion_degradado']??'')=='to bottom') echo 'selected'; ?>>⬇️ Vertical</option>
+                                        <option value="135deg" <?php if(($conf['direccion_degradado']??'')=='135deg') echo 'selected'; ?>>↘️ Diagonal</option>
                                     </select>
                                 </div>
-
                                 <div class="col-12 mt-3">
-                                    <div class="p-3 border rounded bg-white">
-                                        <small class="text-muted mb-2 d-block">Vista Previa en Vivo (Banner de Tienda):</small>
-                                        <div id="bannerPreview" class="preview-banner shadow-sm">
-                                            ¡OFERTAS DEL MES!<br>
-                                            <span style="font-size: 0.8rem; opacity: 0.9;">Tu degradado personalizado</span>
-                                        </div>
-                                    </div>
+                                    <div id="bannerPreview" class="preview-banner shadow-sm">VISTA PREVIA DE TU BANNER WEB</div>
                                 </div>
                             </div>
 
                             <h5 class="text-primary border-bottom pb-2 mb-3">3. Módulos y Funciones</h5>
                             <div class="row g-3 mb-4">
                                 <div class="col-md-6">
-                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white h-100 d-flex align-items-center">
-                                        <input class="form-check-input fs-4 me-3" type="checkbox" name="modulo_clientes" id="mod_cli" <?php echo ($conf['modulo_clientes']) ? 'checked' : ''; ?>>
-                                        <div>
-                                            <label class="form-check-label fw-bold" for="mod_cli">👥 Gestión de Clientes / Fiado</label>
-                                            <div class="small text-muted">Permite registrar clientes y cuentas corrientes.</div>
-                                        </div>
+                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white">
+                                        <input class="form-check-input me-3" type="checkbox" name="modulo_clientes" id="mod_cli" <?php echo ($conf['modulo_clientes']) ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-bold" for="mod_cli">👥 Clientes</label>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white h-100 d-flex align-items-center">
-                                        <input class="form-check-input fs-4 me-3" type="checkbox" name="modulo_stock" id="mod_stk" <?php echo ($conf['modulo_stock']) ? 'checked' : ''; ?>>
-                                        <div>
-                                            <label class="form-check-label fw-bold" for="mod_stk">📦 Control de Stock Avanzado</label>
-                                            <div class="small text-muted">Alertas de stock bajo, vencimientos, combos.</div>
-                                        </div>
+                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white">
+                                        <input class="form-check-input me-3" type="checkbox" name="modulo_stock" id="mod_stk" <?php echo ($conf['modulo_stock']) ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-bold" for="mod_stk">📦 Stock</label>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white h-100 d-flex align-items-center">
-                                        <input class="form-check-input fs-4 me-3" type="checkbox" name="modulo_reportes" id="mod_rep" <?php echo ($conf['modulo_reportes']) ? 'checked' : ''; ?>>
-                                        <div>
-                                            <label class="form-check-label fw-bold" for="mod_rep">📊 Reportes y Estadísticas</label>
-                                            <div class="small text-muted">Gráficos de ventas y exportación a Excel.</div>
-                                        </div>
+                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white">
+                                        <input class="form-check-input me-3" type="checkbox" name="modulo_reportes" id="mod_rep" <?php echo ($conf['modulo_reportes']) ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-bold" for="mod_rep">📊 Reportes</label>
                                     </div>
                                 </div>
                                 <div class="col-md-6">
-                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white h-100 d-flex align-items-center">
-                                        <input class="form-check-input fs-4 me-3" type="checkbox" name="modulo_fidelizacion" id="mod_fid" <?php echo ($conf['modulo_fidelizacion']) ? 'checked' : ''; ?>>
-                                        <div>
-                                            <label class="form-check-label fw-bold" for="mod_fid">⭐ Club de Puntos (Fidelización)</label>
-                                            <div class="small text-muted">Sumar puntos por compra y canjes.</div>
-                                        </div>
+                                    <div class="form-check form-switch py-2 border rounded px-3 bg-white">
+                                        <input class="form-check-input me-3" type="checkbox" name="modulo_fidelizacion" id="mod_fid" <?php echo ($conf['modulo_fidelizacion']) ? 'checked' : ''; ?>>
+                                        <label class="form-check-label fw-bold" for="mod_fid">⭐ Fidelización</label>
                                     </div>
                                 </div>
-                                
+
+                                <div class="col-12 mt-2">
+                                    <div class="p-3 border rounded bg-light border-primary">
+                                        <label class="form-label fw-bold text-dark"><i class="bi bi-star-fill text-warning"></i> Configuración de Puntos (Club)</label>
+                                        <div class="input-group">
+                                            <span class="input-group-text bg-white">Sumar 1 Punto cada</span>
+                                            <span class="input-group-text bg-white fw-bold">$</span>
+                                            <input type="number" name="dinero_por_punto" class="form-control fw-bold" value="<?php echo $conf['dinero_por_punto'] ?? 100; ?>">
+                                        </div>
+                                        <small class="text-muted">Ejemplo: Si pones 500, el cliente debe gastar $500 para ganar 1 punto.</small>
+                                    </div>
+                                </div>
+
                                 <div class="col-12 mt-2">
                                     <div class="p-3 border rounded bg-light border-warning">
-                                        <label class="form-label fw-bold text-dark"><i class="bi bi-calendar-range"></i> Configuración Global de Vencimientos</label>
+                                        <label class="form-label fw-bold text-dark"><i class="bi bi-calendar-range"></i> Vencimientos</label>
                                         <div class="input-group">
-                                            <span class="input-group-text bg-white">Avisar cuando falten</span>
+                                            <span class="input-group-text bg-white">Avisar</span>
                                             <input type="number" name="dias_alerta_vencimiento" class="form-control fw-bold" value="<?php echo $conf['dias_alerta_vencimiento'] ?? 30; ?>">
-                                            <span class="input-group-text bg-white">días para vencer</span>
+                                            <span class="input-group-text bg-white">días antes</span>
                                         </div>
-                                        <small class="text-muted">Esto se aplicará a todos los productos, salvo que especifiques uno diferente al editar el producto.</small>
                                     </div>
                                 </div>
                             </div>
@@ -262,23 +245,13 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
     
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-
     <script>
         const colorBtn = document.getElementById('inputColorBtn');
         const colorSec = document.getElementById('inputColorSec');
         const dirDeg = document.getElementById('selectDirDeg');
         const banner = document.getElementById('bannerPreview');
-
-        function updateBanner() {
-            const c1 = colorBtn.value;
-            const c2 = colorSec.value;
-            const dir = dirDeg.value;
-            banner.style.background = `linear-gradient(${dir}, ${c1}, ${c2})`;
-        }
-
-        colorBtn.addEventListener('input', updateBanner);
-        colorSec.addEventListener('input', updateBanner);
-        dirDeg.addEventListener('change', updateBanner);
+        function updateBanner() { banner.style.background = `linear-gradient(${dirDeg.value}, ${colorBtn.value}, ${colorSec.value})`; }
+        colorBtn.addEventListener('input', updateBanner); colorSec.addEventListener('input', updateBanner); dirDeg.addEventListener('change', updateBanner);
     </script>
 </body>
 </html>

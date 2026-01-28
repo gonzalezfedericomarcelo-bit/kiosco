@@ -1,5 +1,5 @@
 <?php
-// tienda.php - AHORA RESPETA TU DEGRADADO
+// tienda.php - CON FILTROS DE SALUD
 require_once 'includes/db.php';
 
 // DATOS DE CONFIGURACIÓN
@@ -9,15 +9,23 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
 $filtro = $_GET['q'] ?? '';
 $cat_filtro = $_GET['cat'] ?? '';
+$salud_filtro = $_GET['salud'] ?? ''; // Nuevo filtro
+
 $sql = "SELECT p.*, c.nombre as categoria FROM productos p JOIN categorias c ON p.id_categoria = c.id WHERE p.activo = 1 AND p.stock_actual > 0";
+
 if($filtro) { $sql .= " AND p.descripcion LIKE '%$filtro%'"; }
 if($cat_filtro) { $sql .= " AND p.id_categoria = $cat_filtro"; }
+
+// Lógica de Filtros Salud
+if($salud_filtro == 'celiaco') { $sql .= " AND es_apto_celiaco = 1"; }
+if($salud_filtro == 'vegano') { $sql .= " AND es_apto_vegano = 1"; }
+
 $sql .= " ORDER BY p.es_destacado_web DESC, p.descripcion ASC";
 $productos = $conexion->query($sql)->fetchAll();
 
 // VARIABLES DE DISEÑO
 $color_pri = $conf['color_botones'] ?? '#0d6efd';
-$color_sec = $conf['color_secundario'] ?? '#0dcaf0'; // El "azul m*****" ahora es controlable
+$color_sec = $conf['color_secundario'] ?? '#0dcaf0'; 
 $deg_dir = $conf['direccion_degradado'] ?? '135deg';
 ?>
 <!DOCTYPE html>
@@ -80,13 +88,22 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
     </div>
 
     <div class="container mb-4">
-        <div class="d-flex gap-2 overflow-auto" style="white-space: nowrap;">
-            <a href="tienda.php" class="btn btn-sm rounded-pill shadow-sm <?php echo $cat_filtro == '' ? 'btn-custom' : 'btn-light'; ?>">Todo</a>
+        <div class="d-flex gap-2 overflow-auto" style="white-space: nowrap; padding-bottom: 10px;">
+            <a href="tienda.php" class="btn btn-sm rounded-pill shadow-sm <?php echo ($cat_filtro == '' && $salud_filtro == '') ? 'btn-custom' : 'btn-light'; ?>">Todo</a>
+            
             <?php foreach($categorias as $c): ?>
                 <a href="tienda.php?cat=<?php echo $c->id; ?>" class="btn btn-sm rounded-pill shadow-sm <?php echo $cat_filtro == $c->id ? 'btn-custom' : 'btn-light'; ?>">
                     <?php echo $c->nombre; ?>
                 </a>
             <?php endforeach; ?>
+
+            <div class="vr mx-1"></div>
+            <a href="tienda.php?salud=celiaco" class="btn btn-sm rounded-pill shadow-sm <?php echo $salud_filtro == 'celiaco' ? 'btn-custom' : 'btn-outline-warning text-dark'; ?>">
+                🌾 Sin TACC
+            </a>
+            <a href="tienda.php?salud=vegano" class="btn btn-sm rounded-pill shadow-sm <?php echo $salud_filtro == 'vegano' ? 'btn-custom' : 'btn-outline-success text-dark'; ?>">
+                🌱 Vegano
+            </a>
         </div>
     </div>
 

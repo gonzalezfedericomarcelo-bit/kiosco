@@ -125,6 +125,7 @@ $clientes = $conexion->query("SELECT * FROM clientes ORDER BY id DESC")->fetchAl
                                     </div>
                                 </td>
                                 <td><?php echo $c->dni ?: '--'; ?></td>
+                                <td>Puntos: <?php echo $c->puntos_acumulados; ?></td>
                                 <td>
                                     <?php if($c->whatsapp): ?>
                                         <a href="https://wa.me/<?php echo preg_replace('/[^0-9]/', '', $c->whatsapp); ?>" target="_blank" class="text-success text-decoration-none fw-bold">

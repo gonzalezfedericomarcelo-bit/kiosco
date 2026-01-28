@@ -32,7 +32,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 // LOGIN EXITOSO: Guardamos datos en sesión
                 $_SESSION['usuario_id'] = $user->id;
                 $_SESSION['nombre'] = $user->nombre_completo;
-                $_SESSION['rol'] = $user->id_rol;
+                $_SESSION['rol'] = $user->id_rol; // Esto ya estaba, está perfecto.
+
+                // --- NUEVO: RELOJ Y ASISTENCIA ---
+                
+                // 1. Guardamos la hora de inicio para el reloj visual (Javascript)
+                $_SESSION['hora_ingreso'] = time();
+
+                // 2. Registramos el ingreso en la Base de Datos (Tabla asistencia)
+                // Usamos try/catch para que si falla el reloj, NO te bloquee el ingreso al sistema
+                try {
+                    $sql_reloj = "INSERT INTO asistencia (id_usuario, ingreso) VALUES (:uid, NOW())";
+                    $stmt_reloj = $conexion->prepare($sql_reloj);
+                    $stmt_reloj->execute([':uid' => $user->id]);
+                } catch (Exception $e) {
+                    // Si querés ver errores de base de datos descomentá la linea de abajo:
+                    // die("Error registrando asistencia: " . $e->getMessage());
+                }
+                // ---------------------------------
                 
                 // Redirigir al panel principal
                 header("Location: dashboard.php");

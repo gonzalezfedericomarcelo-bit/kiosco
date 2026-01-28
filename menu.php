@@ -74,6 +74,11 @@ $pagina = basename($_SERVER['PHP_SELF']);
                         <i class="bi bi-cart4"></i> Caja
                     </a>
                 </li>
+                <li class="nav-item">
+                    <a class="nav-link <?php echo $pagina=='cierre_caja.php'?'active':'';?>" href="cierre_caja.php">
+                        <i class="bi bi-cash-coin"></i> Cerrar Caja
+                    </a>
+                </li>
                 
                 <li class="nav-item">
                     <a class="nav-link <?php echo $pagina=='productos.php'?'active':'';?>" href="productos.php">

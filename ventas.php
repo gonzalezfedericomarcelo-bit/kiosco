@@ -53,6 +53,24 @@ try {
                     </div>
                 </div>
 
+                <div class="card shadow border-0 mb-3">
+                    <div class="card-header bg-white py-2">
+                        <div class="d-flex gap-2 overflow-auto pb-1" id="filtros-rapidos">
+                            <button class="btn btn-sm btn-dark fw-bold rounded-pill text-nowrap" onclick="cargarRapidos('')">Todos</button>
+                            <?php foreach($conexion->query("SELECT * FROM categorias WHERE activo=1") as $c): ?>
+                                <button class="btn btn-sm btn-outline-secondary rounded-pill text-nowrap" onclick="cargarRapidos(<?php echo $c->id; ?>)">
+                                    <?php echo $c->nombre; ?>
+                                </button>
+                            <?php endforeach; ?>
+                        </div>
+                    </div>
+                    <div class="card-body bg-light p-2" style="max-height: 200px; overflow-y: auto;">
+                        <div class="row g-2" id="grid-rapidos">
+                            <div class="text-center w-100 text-muted small py-3">Selecciona una categoría arriba...</div>
+                        </div>
+                    </div>
+                </div>
+
                 <div class="card shadow border-0" style="position: relative; z-index: 1;">
                     <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-cart3"></i> Carrito de Compras</span>
@@ -144,6 +162,7 @@ try {
                             <div class="d-flex justify-content-between mt-2 px-1">
                                 <span class="text-muted">Su vuelto:</span>
                                 <span id="monto-vuelto" class="h5 fw-bold text-success">$ 0.00</span>
+                                <div id="desglose-billetes" class="alert alert-info mt-2 small mb-0" style="display:none;"></div>
                             </div>
                         </div>
 
@@ -268,7 +287,15 @@ try {
 
         function upd(i,v){ if(v<=0)del(i); else carrito[i].cantidad=v; render(); } 
         function del(i){ carrito.splice(i,1); render(); } 
-        function vaciarCarrito(){ carrito=[]; $('#input-cupon').val(''); $('#input-desc-manual').val(''); render(); }
+        function vaciarCarrito(){ 
+            carrito = []; 
+            $('#input-cupon').val(''); 
+            $('#input-desc-manual').val(''); 
+            $('#paga-con').val(''); // Limpia el input de con cuánto paga
+            $('#monto-vuelto').text('$ 0.00'); // Resetea el texto del vuelto
+            $('#desglose-billetes').hide().html(''); // <--- ESTO FALTABA: Oculta y borra el desglose anterior
+            render(); 
+        }
         
         $('#paga-con').on('keyup', calc); $('#input-desc-manual').on('keyup change', calc); $('#input-cupon').on('keyup', validarCupon);
 
@@ -283,16 +310,56 @@ try {
             calc();
         }
 
-        function calc(){ 
-            let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0;
-            let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
-            let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
-            let descuentoCupon = (subtotal * porcDesc) / 100;
-            let totalFinal = subtotal - descuentoCupon - manualDesc; if(totalFinal < 0) totalFinal = 0;
-            $('#total-venta').text('$ ' + totalFinal.toFixed(2));
-            if(descuentoCupon > 0 || manualDesc > 0) $('#info-subtotal').text('Subtotal: $' + subtotal.toFixed(2)).show(); else $('#info-subtotal').hide();
-            let paga = parseFloat($('#paga-con').val()) || 0; $('#monto-vuelto').text('$ '+(paga-totalFinal > 0 ? (paga-totalFinal).toFixed(2) : '0.00')); 
-        }
+        // Función calc() MEJORADA con desglose de billetes argentinos
+function calc(){ 
+    let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0;
+    let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
+    let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
+    
+    let descuentoCupon = (subtotal * porcDesc) / 100;
+    let totalFinal = subtotal - descuentoCupon - manualDesc; 
+    if(totalFinal < 0) totalFinal = 0;
+    
+    $('#total-venta').text('$ ' + totalFinal.toFixed(2));
+    
+    if(descuentoCupon > 0 || manualDesc > 0) 
+        $('#info-subtotal').text('Subtotal: $' + subtotal.toFixed(2)).show(); 
+    else 
+        $('#info-subtotal').hide();
+
+    // Calculo de vuelto y billetes
+    let paga = parseFloat($('#paga-con').val()) || 0; 
+    let vuelto = paga - totalFinal;
+
+    if(vuelto > 0) {
+        $('#monto-vuelto').text('$ ' + vuelto.toFixed(2));
+        
+        // --- ALGORITMO DE DESGLOSE DE BILLETES ---
+        let resto = vuelto;
+        let textoBilletes = '<strong>Entregar:</strong><br>';
+        const billetes = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10]; // Ordenados mayor a menor
+        let hayBilletes = false;
+
+        billetes.forEach(b => {
+            if(resto >= b) {
+                let cant = Math.floor(resto / b);
+                if(cant > 0) {
+                    textoBilletes += `${cant} x $${b}<br>`;
+                    resto -= (cant * b);
+                    hayBilletes = true;
+                }
+            }
+        });
+        
+        if(resto > 0) textoBilletes += `Monedas: $${resto.toFixed(2)}`;
+        
+        $('#desglose-billetes').html(textoBilletes).show();
+        // ----------------------------------------
+    } else {
+        $('#monto-vuelto').text('$ 0.00');
+        $('#desglose-billetes').hide();
+    }
+}
         
         $('#metodo-pago').change(function(){ $(this).val()=='Efectivo'?$('#box-vuelto').slideDown():$('#box-vuelto').slideUp(); });
 
@@ -344,6 +411,39 @@ try {
                 } else Swal.fire('Error',r.msg,'error');
             },'json');
         });
+        // Cargar productos rápidos al iniciar
+        $(document).ready(function() { cargarRapidos(''); });
+
+        function cargarRapidos(categoria) {
+            $('#grid-rapidos').html('<div class="text-center w-100"><div class="spinner-border spinner-border-sm"></div></div>');
+            
+            // Actualizar estilo botones
+            $('#filtros-rapidos button').removeClass('btn-dark fw-bold').addClass('btn-outline-secondary');
+            // (Truco simple: al hacer click, el botón actual se pone oscuro. Requiere pasar 'this' pero para hacerlo simple recargamos todos)
+            
+            $.getJSON('acciones/listar_rapidos.php', { cat: categoria }, function(data) {
+                let html = '';
+                if(data.length > 0) {
+                    data.forEach(p => {
+                        // Cortar nombre si es muy largo
+                        let nombre = p.descripcion.length > 15 ? p.descripcion.substring(0,15)+'..' : p.descripcion;
+                        
+                        html += `
+                        <div class="col-4 col-md-3 col-lg-2">
+                            <div class="card h-100 shadow-sm border-0 producto-rapido" onclick='seleccionarProducto(${JSON.stringify(p)})' style="cursor:pointer;">
+                                <div class="card-body p-2 text-center">
+                                    <div class="fw-bold small text-truncate" title="${p.descripcion}">${nombre}</div>
+                                    <div class="text-primary fw-bold small">$${p.precio_venta}</div>
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                } else {
+                    html = '<div class="text-center w-100 text-muted small">No hay productos en esta categoría.</div>';
+                }
+                $('#grid-rapidos').html(html);
+            });
+        }
     </script>
 </body>
 </html>

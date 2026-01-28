@@ -1,24 +1,17 @@
 <?php
-// menu.php - VERSIÓN FINAL UNIFORME (SIN COLORES RAROS)
+// menu.php - TU CÓDIGO ORIGINAL CON LOS NUEVOS BOTONES
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// 1. CONEXIÓN SEGURA
-$rutas_db = [__DIR__ . '/db.php', __DIR__ . '/includes/db.php', 'db.php'];
-$db_encontrada = false;
-foreach ($rutas_db as $ruta) {
-    if (file_exists($ruta)) {
-        require_once $ruta;
-        $db_encontrada = true;
-        break;
-    }
-}
+// Conexión (Tu lógica original)
+$rutas_db = [__DIR__ . '/db.php', __DIR__ . '/includes/db.php', 'db.php', '../db.php']; 
+foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; break; } }
 
-// Configuración por defecto
+// Configuración visual (Tu lógica original)
 $color_nav = '#212529'; 
 $nombre_negocio = 'SISTEMA KIOSCO';
 $logo_url = '';
 
-if ($db_encontrada && isset($conexion)) {
+if (isset($conexion)) {
     try {
         $stmt = $conexion->query("SELECT * FROM configuracion WHERE id=1");
         if ($stmt) {
@@ -48,7 +41,7 @@ $pagina = basename($_SERVER['PHP_SELF']);
 <nav class="navbar navbar-expand-lg navbar-custom sticky-top mb-4 shadow-sm">
     <div class="container">
         <a class="navbar-brand d-flex align-items-center" href="dashboard.php">
-            <?php if(!empty($logo_url) && file_exists($logo_url)): ?>
+            <?php if(!empty($logo_url)): ?>
                 <img src="<?php echo $logo_url; ?>" class="logo-menu" alt="Logo">
             <?php else: ?>
                 <i class="bi bi-shop window me-2"></i> 
@@ -87,12 +80,25 @@ $pagina = basename($_SERVER['PHP_SELF']);
                 </li>
 
                 <?php if($rol <= 2): ?>
+                
                 <li class="nav-item">
-                    <a class="nav-link <?php echo $pagina=='precios_masivos.php'?'active':'';?>" href="precios_masivos.php">
-                        <i class="bi bi-graph-up-arrow"></i> Aumentos
+                    <a class="nav-link <?php echo $pagina=='devoluciones.php'?'active':'';?>" href="devoluciones.php">
+                        <i class="bi bi-arrow-counterclockwise"></i> Devoluciones
                     </a>
                 </li>
-                
+
+                <li class="nav-item dropdown">
+                    <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                        <i class="bi bi-wallet2"></i> Finanzas
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li><a class="dropdown-item" href="gastos.php">Gastos y Retiros</a></li>
+                        <li><a class="dropdown-item" href="mermas.php">Mermas y Roturas</a></li>
+                        <li><hr class="dropdown-divider"></li>
+                        <li><a class="dropdown-item" href="precios_masivos.php">Aumentos Masivos</a></li>
+                    </ul>
+                </li>
+
                 <li class="nav-item">
                     <a class="nav-link <?php echo $pagina=='proveedores.php'?'active':'';?>" href="proveedores.php">
                         <i class="bi bi-truck"></i> Proveedores
@@ -105,6 +111,9 @@ $pagina = basename($_SERVER['PHP_SELF']);
                         <i class="bi bi-people-fill"></i> Clientes
                     </a>
                 </li>
+                <li><a class="dropdown-item" href="canje_puntos.php">Canje de Puntos</a></li>
+                <li><a class="dropdown-item" href="ver_encuestas.php">Encuestas</a></li>
+                
 
                 <?php if($rol <= 2): ?>
                     <li class="nav-item">

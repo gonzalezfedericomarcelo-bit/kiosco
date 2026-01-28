@@ -1,5 +1,5 @@
 <?php
-// ventas.php - CON IMPRESIÓN DE TICKET + PAUSA + DESCUENTOS
+// ventas.php - VERSIÓN CORREGIDA FINAL
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -118,6 +118,17 @@ try {
                         <div id="info-deuda" class="d-none mb-3 text-center">
                             <div class="alert alert-danger py-1 mb-0 fw-bold">Deuda: <span id="lbl-deuda"></span></div>
                         </div>
+                        
+                        <div id="info-saldo" class="d-none mb-3 text-center">
+                            <div class="alert alert-success py-1 mb-0 d-flex justify-content-between align-items-center px-2">
+                                <span class="fw-bold small">Saldo a favor: <span id="lbl-saldo">$0.00</span></span>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" id="usar-saldo" onchange="calc()">
+                                    <label class="form-check-label small fw-bold" for="usar-saldo">USAR</label>
+                                </div>
+                                <input type="hidden" id="val-saldo" value="0">
+                            </div>
+                        </div>
 
                         <div class="row g-2 mb-3">
                             <div class="col-6">
@@ -188,7 +199,7 @@ try {
                 <div class="modal-body">
                     <input type="text" id="input-search-modal" class="form-control form-control-lg mb-3" placeholder="Escribe nombre o DNI..." autocomplete="off">
                     <div id="lista-clientes-modal" class="list-group mb-3"></div>
-                    <button class="btn btn-secondary w-100" onclick="seleccionarCliente(1, 'Consumidor Final', 0)">Usar Consumidor Final</button>
+                    <button class="btn btn-secondary w-100" onclick="seleccionarCliente(1, 'Consumidor Final', 0, 0)">Usar Consumidor Final</button>
                 </div>
             </div>
         </div>
@@ -212,7 +223,6 @@ try {
             if(e.key === 'F8') { e.preventDefault(); recuperarVenta(); }
             if(e.key === 'F9') { e.preventDefault(); $('#btn-finalizar').click(); }
             
-            // Atajos en el SweetAlert de éxito (Enter para Imprimir, Esc para Cerrar)
             if(Swal.isVisible()) {
                 if(e.key === 'Enter') { 
                     const confirmBtn = Swal.getConfirmButton();
@@ -221,7 +231,7 @@ try {
             }
         });
 
-        // FUNCIONES DE PAUSA (Igual que antes)
+        // FUNCIONES DE PAUSA
         function pausarVenta() {
             if(carrito.length === 0) return Swal.fire('Error', 'No hay nada para pausar', 'info');
             let estado = { carrito: carrito, cliente_id: $('#id-cliente').val(), cliente_nombre: $('#lbl-nombre-cliente').text(), cupon: $('#input-cupon').val(), desc_manual: $('#input-desc-manual').val() };
@@ -237,7 +247,7 @@ try {
         }
         function cargarVentaRecuperada(estado) {
             carrito = estado.carrito;
-            seleccionarCliente(estado.cliente_id, estado.cliente_nombre, 0);
+            seleccionarCliente(estado.cliente_id, estado.cliente_nombre, 0, 0); 
             $('#input-cupon').val(estado.cupon); $('#input-desc-manual').val(estado.desc_manual);
             render(); validarCupon(); localStorage.removeItem('venta_pausada'); verificarVentaPausada();
             const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000}); Toast.fire({icon: 'success', title: 'Venta recuperada'});
@@ -247,7 +257,7 @@ try {
             else $('#btn-recuperar').addClass('d-none').removeClass('btn-pausada-activa');
         }
 
-        // BUSCADOR Y RENDERIZADO (Igual que antes)
+        // BUSCADOR Y RENDERIZADO
         $('#buscar-producto').on('keyup', function(e) {
             if(e.key === 'Enter') {
                 let term = $(this).val(); if(term.length < 1) return;
@@ -291,9 +301,10 @@ try {
             carrito = []; 
             $('#input-cupon').val(''); 
             $('#input-desc-manual').val(''); 
-            $('#paga-con').val(''); // Limpia el input de con cuánto paga
-            $('#monto-vuelto').text('$ 0.00'); // Resetea el texto del vuelto
-            $('#desglose-billetes').hide().html(''); // <--- ESTO FALTABA: Oculta y borra el desglose anterior
+            $('#paga-con').val(''); 
+            $('#monto-vuelto').text('$ 0.00'); 
+            $('#desglose-billetes').hide().html(''); 
+            $('#usar-saldo').prop('checked', false); 
             render(); 
         }
         
@@ -310,56 +321,61 @@ try {
             calc();
         }
 
-        // Función calc() MEJORADA con desglose de billetes argentinos
-function calc(){ 
-    let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0;
-    let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
-    let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
-    
-    let descuentoCupon = (subtotal * porcDesc) / 100;
-    let totalFinal = subtotal - descuentoCupon - manualDesc; 
-    if(totalFinal < 0) totalFinal = 0;
-    
-    $('#total-venta').text('$ ' + totalFinal.toFixed(2));
-    
-    if(descuentoCupon > 0 || manualDesc > 0) 
-        $('#info-subtotal').text('Subtotal: $' + subtotal.toFixed(2)).show(); 
-    else 
-        $('#info-subtotal').hide();
-
-    // Calculo de vuelto y billetes
-    let paga = parseFloat($('#paga-con').val()) || 0; 
-    let vuelto = paga - totalFinal;
-
-    if(vuelto > 0) {
-        $('#monto-vuelto').text('$ ' + vuelto.toFixed(2));
-        
-        // --- ALGORITMO DE DESGLOSE DE BILLETES ---
-        let resto = vuelto;
-        let textoBilletes = '<strong>Entregar:</strong><br>';
-        const billetes = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10]; // Ordenados mayor a menor
-        let hayBilletes = false;
-
-        billetes.forEach(b => {
-            if(resto >= b) {
-                let cant = Math.floor(resto / b);
-                if(cant > 0) {
-                    textoBilletes += `${cant} x $${b}<br>`;
-                    resto -= (cant * b);
-                    hayBilletes = true;
-                }
+        // Función calc() - LÓGICA AUTOMÁTICA SALDO
+        function calc(){ 
+            let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0;
+            let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
+            let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
+            
+            // --- Lógica Saldo ---
+            let saldoUsado = 0;
+            let aPagarTemp = subtotal - ((subtotal * porcDesc) / 100) - manualDesc;
+            
+            if($('#usar-saldo').is(':checked') && aPagarTemp > 0){
+                let disponible = parseFloat($('#val-saldo').val()) || 0;
+                saldoUsado = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
             }
-        });
-        
-        if(resto > 0) textoBilletes += `Monedas: $${resto.toFixed(2)}`;
-        
-        $('#desglose-billetes').html(textoBilletes).show();
-        // ----------------------------------------
-    } else {
-        $('#monto-vuelto').text('$ 0.00');
-        $('#desglose-billetes').hide();
-    }
-}
+            // -------------------
+
+            let descuentoCupon = (subtotal * porcDesc) / 100;
+            let totalFinal = subtotal - descuentoCupon - manualDesc - saldoUsado; 
+            
+            if(totalFinal < 0) totalFinal = 0; 
+            
+            $('#total-venta').text('$ ' + totalFinal.toFixed(2));
+            
+            let infoTxt = '';
+            if(descuentoCupon > 0) infoTxt += 'Cupón: -$' + descuentoCupon.toFixed(2) + ' | ';
+            if(manualDesc > 0) infoTxt += 'Manual: -$' + manualDesc.toFixed(2) + ' | ';
+            if(saldoUsado > 0) infoTxt += 'Saldo Favor: -$' + saldoUsado.toFixed(2);
+            
+            if(infoTxt != '') $('#info-subtotal').text(infoTxt).show(); 
+            else $('#info-subtotal').hide();
+
+            let paga = parseFloat($('#paga-con').val()) || 0; 
+            let vuelto = paga - totalFinal;
+
+            if(vuelto > 0) {
+                $('#monto-vuelto').text('$ ' + vuelto.toFixed(2));
+                let resto = vuelto;
+                let textoBilletes = '<strong>Entregar:</strong><br>';
+                const billetes = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
+                billetes.forEach(b => {
+                    if(resto >= b) {
+                        let cant = Math.floor(resto / b);
+                        if(cant > 0) {
+                            textoBilletes += `${cant} x $${b}<br>`;
+                            resto -= (cant * b);
+                        }
+                    }
+                });
+                if(resto > 0) textoBilletes += `Monedas: $${resto.toFixed(2)}`;
+                $('#desglose-billetes').html(textoBilletes).show();
+            } else {
+                $('#monto-vuelto').text('$ 0.00');
+                $('#desglose-billetes').hide();
+            }
+        }
         
         $('#metodo-pago').change(function(){ $(this).val()=='Efectivo'?$('#box-vuelto').slideDown():$('#box-vuelto').slideUp(); });
 
@@ -368,13 +384,38 @@ function calc(){
         $('#input-search-modal').on('keyup', function() {
             let term = $(this).val(); if(term.length < 2) return;
             $.getJSON('acciones/buscar_cliente_ajax.php', { term: term }, function(res) {
-                let html = ''; if(res.length > 0) res.forEach(c => { let dni = c.dni ? c.dni : '--'; let saldoClass = c.saldo_actual > 0 ? 'text-danger fw-bold' : 'text-success'; let textoSaldo = c.saldo_actual > 0 ? 'Debe $' + c.saldo_actual : 'Al día'; html += `<button class="list-group-item list-group-item-action p-3" onclick="seleccionarCliente(${c.id}, '${c.nombre}', ${c.saldo_actual})"><div class="d-flex w-100 justify-content-between align-items-center"><div><h6 class="mb-1 fw-bold">${c.nombre}</h6><div class="small text-muted">DNI: ${dni}</div></div><div class="text-end"><small class="${saldoClass}">${textoSaldo}</small></div></div></button>`; }); else html = '<div class="p-3 text-center text-muted">No se encontraron clientes.</div>'; $('#lista-clientes-modal').html(html);
+                let html = ''; if(res.length > 0) res.forEach(c => { 
+                    let dni = c.dni ? c.dni : '--'; 
+                    let saldoClass = c.saldo_actual > 0 ? 'text-danger fw-bold' : 'text-success'; 
+                    let textoSaldo = c.saldo_actual > 0 ? 'Debe $' + c.saldo_actual : 'Al día'; 
+                    // PASAMOS EL SALDO A LA FUNCIÓN
+                    html += `<button class="list-group-item list-group-item-action p-3" onclick="seleccionarCliente(${c.id}, '${c.nombre}', ${c.saldo_actual}, ${c.saldo_favor || 0})"><div class="d-flex w-100 justify-content-between align-items-center"><div><h6 class="mb-1 fw-bold">${c.nombre}</h6><div class="small text-muted">DNI: ${dni}</div></div><div class="text-end"><small class="${saldoClass}">${textoSaldo}</small></div></div></button>`; 
+                }); else html = '<div class="p-3 text-center text-muted">No se encontraron clientes.</div>'; $('#lista-clientes-modal').html(html);
             });
         });
 
-        window.seleccionarCliente=function(id,n,d){ $('#id-cliente').val(id); $('#lbl-nombre-cliente').text(n); d > 0 ? ($('#lbl-deuda').text('$'+d), $('#info-deuda').removeClass('d-none')) : $('#info-deuda').addClass('d-none'); modalCliente.hide(); validarCupon(); $('#buscar-producto').focus(); };
+        window.seleccionarCliente=function(id,n,d,s){ 
+            $('#id-cliente').val(id); 
+            $('#lbl-nombre-cliente').text(n); 
+            
+            d > 0 ? ($('#lbl-deuda').text('$'+d), $('#info-deuda').removeClass('d-none')) : $('#info-deuda').addClass('d-none'); 
+            
+            // LÓGICA ACTIVACIÓN AUTOMÁTICA SALDO
+            let saldo = parseFloat(s || 0);
+            if(saldo > 0) {
+                $('#lbl-saldo').text('$' + saldo.toFixed(2));
+                $('#val-saldo').val(saldo);
+                $('#info-saldo').removeClass('d-none');
+                $('#usar-saldo').prop('checked', true); // <--- ACTIVAR AUTOMÁTICO
+            } else {
+                $('#info-saldo').addClass('d-none');
+                $('#val-saldo').val(0);
+                $('#usar-saldo').prop('checked', false);
+            }
 
-        // --- FINALIZAR VENTA MODIFICADO (TICKET) ---
+            modalCliente.hide(); validarCupon(); $('#buscar-producto').focus(); calc(); 
+        };
+
         $('#btn-finalizar').click(function(){
             if(carrito.length==0) return Swal.fire('Error','Carrito vacío','error');
             let m = $('#metodo-pago').val(); let c = $('#id-cliente').val(); let totalFinal = parseFloat($('#total-venta').text().replace('$ ',''));
@@ -382,12 +423,20 @@ function calc(){
 
             if(m=='CtaCorriente'&&c==1) return Swal.fire('Error','No se fía a Consumidor Final','warning');
             
+            // PREPARAR SALDO PARA ENVÍO
+            let saldoUsadoEnvio = 0;
+            if($('#usar-saldo').is(':checked')){
+                let disponible = parseFloat($('#val-saldo').val()) || 0;
+                let aPagarTemp = subtotal - descCuponPlata - descManual;
+                saldoUsadoEnvio = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
+            }
+
             $.post('acciones/procesar_venta.php', {
                 items: carrito, total: totalFinal, metodo: m, id_cliente: c,
-                cupon_codigo: cuponCode, desc_cupon_monto: descCuponPlata, desc_manual_monto: descManual
+                cupon_codigo: cuponCode, desc_cupon_monto: descCuponPlata, desc_manual_monto: descManual,
+                saldo_favor_usado: saldoUsadoEnvio
             }, function(r){
                 if(r.status=='success'){ 
-                    // ÉXITO: MOSTRAR OPCIÓN DE IMPRIMIR
                     Swal.fire({
                         title: '¡Venta Registrada!',
                         text: "¿Deseas imprimir el ticket?",
@@ -399,35 +448,27 @@ function calc(){
                         cancelButtonColor: '#6c757d'
                     }).then((result) => {
                         if (result.isConfirmed) {
-                            // Abrir popup de ticket
                             window.open('ticket.php?id=' + r.id_venta, 'Ticket', 'width=350,height=500');
                         }
-                        // Limpiar siempre
                         vaciarCarrito(); 
-                        seleccionarCliente(1,'Consumidor Final',0); 
+                        seleccionarCliente(1,'Consumidor Final',0,0); 
                         $('#buscar-producto').focus();
                     });
 
                 } else Swal.fire('Error',r.msg,'error');
             },'json');
         });
-        // Cargar productos rápidos al iniciar
+
         $(document).ready(function() { cargarRapidos(''); });
 
         function cargarRapidos(categoria) {
             $('#grid-rapidos').html('<div class="text-center w-100"><div class="spinner-border spinner-border-sm"></div></div>');
-            
-            // Actualizar estilo botones
             $('#filtros-rapidos button').removeClass('btn-dark fw-bold').addClass('btn-outline-secondary');
-            // (Truco simple: al hacer click, el botón actual se pone oscuro. Requiere pasar 'this' pero para hacerlo simple recargamos todos)
-            
             $.getJSON('acciones/listar_rapidos.php', { cat: categoria }, function(data) {
                 let html = '';
                 if(data.length > 0) {
                     data.forEach(p => {
-                        // Cortar nombre si es muy largo
                         let nombre = p.descripcion.length > 15 ? p.descripcion.substring(0,15)+'..' : p.descripcion;
-                        
                         html += `
                         <div class="col-4 col-md-3 col-lg-2">
                             <div class="card h-100 shadow-sm border-0 producto-rapido" onclick='seleccionarProducto(${JSON.stringify(p)})' style="cursor:pointer;">

@@ -166,6 +166,9 @@ $clientes = $conexion->query("SELECT * FROM clientes ORDER BY id DESC")->fetchAl
                     <h5 class="modal-title fw-bold" id="modalTitulo">Nuevo Cliente</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
+                <a href="cartel_qr.php" target="_blank" class="btn btn-dark">
+                    <i class="bi bi-qr-code"></i> Imprimir QR Mostrador
+                </a>
                 <div class="modal-body">
                     <form method="POST" id="formCliente">
                         <input type="hidden" name="accion" id="accion" value="crear">

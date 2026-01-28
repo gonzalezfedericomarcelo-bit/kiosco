@@ -1,5 +1,5 @@
 <?php
-// index.php - PANTALLA DE LOGIN
+// index.php - SOLO VISTA (Formulario de Login)
 session_start();
 
 // Si ya está logueado, lo mandamos directo al dashboard
@@ -8,57 +8,12 @@ if (isset($_SESSION['usuario_id'])) {
     exit;
 }
 
-require_once 'includes/db.php';
-
+// Capturar mensajes de error de auth_login.php
 $error = '';
-
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $usuario = trim($_POST['usuario']);
-    $password = trim($_POST['password']);
-
-    if (empty($usuario) || empty($password)) {
-        $error = "Por favor completa todos los campos";
-    } else {
-        // Buscamos al usuario en la BD
-        $stmt = $conexion->prepare("SELECT id, nombre_completo, password, id_rol, activo FROM usuarios WHERE usuario = :u LIMIT 1");
-        $stmt->execute([':u' => $usuario]);
-        $user = $stmt->fetch();
-
-        // Verificamos contraseña encriptada
-        if ($user && password_verify($password, $user->password)) {
-            if ($user->activo == 0) {
-                $error = "Tu usuario está desactivado. Contacta al dueño.";
-            } else {
-                // LOGIN EXITOSO: Guardamos datos en sesión
-                $_SESSION['usuario_id'] = $user->id;
-                $_SESSION['nombre'] = $user->nombre_completo;
-                $_SESSION['rol'] = $user->id_rol; // Esto ya estaba, está perfecto.
-
-                // --- NUEVO: RELOJ Y ASISTENCIA ---
-                
-                // 1. Guardamos la hora de inicio para el reloj visual (Javascript)
-                $_SESSION['hora_ingreso'] = time();
-
-                // 2. Registramos el ingreso en la Base de Datos (Tabla asistencia)
-                // Usamos try/catch para que si falla el reloj, NO te bloquee el ingreso al sistema
-                try {
-                    $sql_reloj = "INSERT INTO asistencia (id_usuario, ingreso) VALUES (:uid, NOW())";
-                    $stmt_reloj = $conexion->prepare($sql_reloj);
-                    $stmt_reloj->execute([':uid' => $user->id]);
-                } catch (Exception $e) {
-                    // Si querés ver errores de base de datos descomentá la linea de abajo:
-                    // die("Error registrando asistencia: " . $e->getMessage());
-                }
-                // ---------------------------------
-                
-                // Redirigir al panel principal
-                header("Location: dashboard.php");
-                exit;
-            }
-        } else {
-            $error = "Usuario o contraseña incorrectos";
-        }
-    }
+if (isset($_GET['error'])) {
+    if ($_GET['error'] == 'vacios') $error = "Por favor completa todos los campos";
+    if ($_GET['error'] == 'inactivo') $error = "Tu usuario está desactivado. Contacta al dueño.";
+    if ($_GET['error'] == 'incorrecto') $error = "Usuario o contraseña incorrectos";
 }
 ?>
 <!DOCTYPE html>
@@ -73,8 +28,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             background: linear-gradient(135deg, #0d6efd 0%, #0a58ca 100%);
             height: 100vh;
             display: flex;
-            align_items: center;
-            justify_content: center;
+            align-items: center;
+            justify-content: center;
         }
         .login-card {
             background: white;
@@ -112,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="alert alert-danger text-center p-2"><?php echo $error; ?></div>
         <?php endif; ?>
 
-        <form method="POST" action="">
+        <form method="POST" action="auth_login.php">
             <div class="mb-3">
                 <label for="usuario" class="form-label">Usuario</label>
                 <input type="text" class="form-control" id="usuario" name="usuario" placeholder="Ej: admin" required autofocus>

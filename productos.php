@@ -1,10 +1,10 @@
 <?php
-// productos.php - CON ALERTA DINÁMICA Y BOTÓN DE PRECIOS MASIVOS
+// productos.php - CON SEMÁFORO REAL Y CÁLCULO DE GANANCIA
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
-// PROCESAR ALTA RÁPIDA
+// PROCESAR ALTA RÁPIDA (Mantengo tu lógica original)
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, precio_costo, precio_venta, stock_actual, activo) VALUES (?, ?, ?, ?, ?, ?, 1)";
     $conexion->prepare($sql)->execute([$_POST['codigo'], $_POST['descripcion'], $_POST['categoria'], $_POST['precio_costo'], $_POST['precio_venta'], $_POST['stock']]);
@@ -21,20 +21,23 @@ $productos = $conexion->query("SELECT p.*, c.nombre as cat FROM productos p JOIN
 
 // OBTENER CONFIG GLOBAL DE VENCIMIENTO
 $config_db = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1")->fetch();
-$dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 por defecto
+$dias_global = $config_db->dias_alerta_vencimiento ?? 30;
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Inventario</title>
+    <title>Inventario - KioscoManager</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         .badge-vencido { background-color: #dc3545; color: white; animation: pulse 2s infinite; }
         .badge-proximo { background-color: #ffc107; color: black; }
         @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.7; } 100% { opacity: 1; } }
+        /* Estilos para ganancia */
+        .info-ganancia { font-size: 0.75rem; color: #6c757d; }
+        .info-ganancia .pct { font-weight: bold; color: #198754; }
     </style>
 </head>
 <body class="bg-light">
@@ -81,9 +84,9 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 po
                             <tr>
                                 <th class="ps-4">Descripción</th>
                                 <th>Categoría</th>
-                                <th>Venta</th>
-                                <th>Stock</th>
-                                <th>Estado</th>
+                                <th>Precio / Ganancia</th>
+                                <th>Stock (Semáforo)</th>
+                                <th>Estado Vencimiento</th>
                                 <th></th>
                             </tr>
                         </thead>
@@ -92,7 +95,7 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 po
                             $hoy = date('Y-m-d');
 
                             foreach($productos as $p): 
-                                // LÓGICA DE ALERTA DINÁMICA
+                                // 1. LÓGICA DE ALERTA DE VENCIMIENTO (Original tuya)
                                 $dias_aviso = ($p->dias_alerta > 0) ? $p->dias_alerta : $dias_global;
                                 $fecha_alerta = date('Y-m-d', strtotime("+$dias_aviso days"));
                                 
@@ -105,6 +108,28 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 po
                                         $estado_venc = '<span class="badge badge-proximo"><i class="bi bi-clock-history"></i> Vence en '.ceil($dias_restantes).' días</span>';
                                     }
                                 }
+
+                                // 2. LÓGICA DE GANANCIA
+                                $costo = floatval($p->precio_costo);
+                                $venta = floatval($p->precio_venta);
+                                $ganancia = $venta - $costo;
+                                $margen = ($costo > 0) ? ($ganancia / $costo) * 100 : 100;
+
+                                // 3. LÓGICA SEMÁFORO DE STOCK (Nueva)
+                                $stk = floatval($p->stock_actual);
+                                $min = floatval($p->stock_minimo);
+                                
+                                // Definimos color y mensaje según stock
+                                if($stk <= $min) {
+                                    // ROJO: Crítico
+                                    $badgeStock = '<span class="badge bg-danger shadow-sm"><i class="bi bi-x-circle-fill"></i> '.$stk.' u.</span>';
+                                } elseif($stk <= ($min * 2)) {
+                                    // AMARILLO: Advertencia (Menos del doble del mínimo)
+                                    $badgeStock = '<span class="badge bg-warning text-dark shadow-sm"><i class="bi bi-exclamation-triangle-fill"></i> '.$stk.' u.</span>';
+                                } else {
+                                    // VERDE: OK
+                                    $badgeStock = '<span class="badge bg-success shadow-sm"><i class="bi bi-check-circle-fill"></i> '.$stk.' u.</span>';
+                                }
                             ?>
                             <tr>
                                 <td class="ps-4">
@@ -112,12 +137,18 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30; // Si falla, usa 30 po
                                     <small class="text-muted"><?php echo $p->codigo_barras; ?></small>
                                 </td>
                                 <td><span class="badge bg-light text-dark border"><?php echo $p->cat; ?></span></td>
-                                <td class="fw-bold text-primary">$<?php echo number_format($p->precio_venta, 2); ?></td>
+                                
                                 <td>
-                                    <span class="badge <?php echo $p->stock_actual <= $p->stock_minimo ? 'bg-danger' : 'bg-success'; ?>">
-                                        <?php echo floatval($p->stock_actual); ?> u.
-                                    </span>
+                                    <div class="fw-bold text-primary" style="font-size: 1.1em;">$<?php echo number_format($venta, 2); ?></div>
+                                    <div class="info-ganancia" title="Costo: $<?php echo $costo; ?>">
+                                        Gan: $<?php echo number_format($ganancia, 2); ?> <span class="pct">(<?php echo round($margen); ?>%)</span>
+                                    </div>
                                 </td>
+
+                                <td>
+                                    <?php echo $badgeStock; ?>
+                                </td>
+
                                 <td>
                                     <?php echo $estado_venc; ?>
                                 </td>

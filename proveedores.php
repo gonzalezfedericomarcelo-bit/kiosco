@@ -1,44 +1,34 @@
 <?php
-// proveedores.php - CORREGIDO PARA USAR OBJETOS (->) SEGÚN TU DB.PHP
+// proveedores.php - VERSIÓN FINAL CON MENÚ FUNCIONANDO
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-// 1. CONEXIÓN ROBUSTA (Busca en raíz o en includes)
-if (file_exists('db.php')) {
-    require_once 'db.php';
-} elseif (file_exists('includes/db.php')) {
-    require_once 'includes/db.php';
-} else {
-    die("<h1>ERROR CRÍTICO: No se encuentra db.php ni en la raíz ni en includes.</h1>");
-}
+// 1. CONEXIÓN
+if (file_exists('db.php')) { require_once 'db.php'; } 
+elseif (file_exists('includes/db.php')) { require_once 'includes/db.php'; } 
+else { die("Error: No se encuentra db.php"); }
 
 // 2. SEGURIDAD
-if (!isset($_SESSION['usuario_id'])) {
-    header("Location: index.php"); exit;
-}
+if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
 // 3. BORRAR PROVEEDOR
 if (isset($_GET['borrar'])) {
     try {
         $id = $_GET['borrar'];
-        // Verificamos si tiene productos (Query compatible)
         $stmt = $conexion->prepare("SELECT COUNT(*) FROM productos WHERE id_proveedor = ? AND activo = 1");
         $stmt->execute([$id]);
         
-        // fetchColumn funciona igual
         if ($stmt->fetchColumn() > 0) {
             $error = "⚠️ No se puede borrar: Tiene productos asociados.";
         } else {
             $conexion->prepare("DELETE FROM proveedores WHERE id = ?")->execute([$id]);
             header("Location: proveedores.php?msg=ok"); exit;
         }
-    } catch (Exception $e) {
-        $error = "Error DB: " . $e->getMessage();
-    }
+    } catch (Exception $e) { $error = "Error DB: " . $e->getMessage(); }
 }
 
-// 4. GUARDAR (NUEVO O EDITAR)
+// 4. GUARDAR
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $empresa = trim($_POST['empresa']);
     $contacto = trim($_POST['contacto']);
@@ -55,19 +45,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 $conexion->prepare($sql)->execute([$empresa, $contacto, $telefono]);
             }
             header("Location: proveedores.php"); exit;
-        } catch (Exception $e) {
-            $error = "Error al guardar: " . $e->getMessage();
-        }
+        } catch (Exception $e) { $error = "Error al guardar: " . $e->getMessage(); }
     }
 }
 
-// 5. LISTAR (Aquí estaba el error 500: Ahora usamos la conexión tal cual es)
+// 5. LISTAR
 try {
-    $stmt = $conexion->query("SELECT * FROM proveedores ORDER BY empresa ASC");
-    $proveedores = $stmt->fetchAll(); // Devuelve OBJETOS por defecto
-} catch (Exception $e) {
-    die("Error de consulta: " . $e->getMessage());
-}
+    $proveedores = $conexion->query("SELECT * FROM proveedores ORDER BY empresa ASC")->fetchAll();
+} catch (Exception $e) { die("Error: " . $e->getMessage()); }
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -87,7 +72,6 @@ try {
 
     <div class="container pb-5 pt-4">
         <div class="row">
-            
             <div class="col-md-4 mb-3">
                 <div class="card shadow-sm border-0">
                     <div class="card-header bg-dark text-white fw-bold"><i class="bi bi-plus-circle"></i> Nuevo Proveedor</div>
@@ -168,6 +152,9 @@ try {
             </div>
         </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
     <script>
     function editar(id,e,c,t){
         document.getElementById('id_edit').value=id;

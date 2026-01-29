@@ -1,5 +1,5 @@
 <?php
-// acciones/procesar_venta.php - FIX: DUPLICADOS ELIMINADOS
+// acciones/procesar_venta.php - VERSIÓN FINAL CORREGIDA (SESSION ID REAL)
 session_start();
 require_once '../includes/db.php';
 header('Content-Type: application/json');
@@ -14,36 +14,40 @@ $user_id = $_SESSION['usuario_id'];
 $cupon_codigo = $_POST['cupon_codigo'] ?? null;
 $desc_cupon_monto = $_POST['desc_cupon_monto'] ?? 0;
 $desc_manual_monto = $_POST['desc_manual_monto'] ?? 0;
-// Recibimos el saldo usado
 $saldo_favor_usado = $_POST['saldo_favor_usado'] ?? 0;
-
+$pago_deuda = $_POST['pago_deuda'] ?? 0;
+$pagos_mixtos = $_POST['pagos_mixtos'] ?? null;
 
 if(empty($items)) { echo json_encode(['status'=>'error', 'msg'=>'Carrito vacío']); exit; }
 
 try {
     $conexion->beginTransaction();
 
-    // 1. OBTENER CONFIGURACIÓN
+    // 1. OBTENER ID CAJA ACTUAL (ESTO VA PRIMERO)
+    $stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
+    $stmtCaja->execute([$user_id]);
+    $caja = $stmtCaja->fetch(PDO::FETCH_ASSOC);
+    
+    if(!$caja) { 
+        echo json_encode(['status'=>'error', 'msg'=>'No hay caja abierta. Por favor abrí caja primero.']); 
+        exit; 
+    }
+    $id_caja_sesion = $caja['id'];
+
+    // 2. CONFIGURACIÓN Y FECHA
     $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
     $ratio_puntos = $conf['dinero_por_punto'] ?? 100; 
     if($ratio_puntos <= 0) $ratio_puntos = 100; 
-
     $fecha_actual = date('Y-m-d H:i:s');
 
-    // 2. INSERTAR VENTA
-    try {
-        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, descuento_monto_cupon, descuento_manual, codigo_cupon) VALUES (1, ?, ?, ?, ?, ?, 'completada', ?, ?, ?)";
-        $stmt = $conexion->prepare($sql);
-        $stmt->execute([$user_id, $id_cliente, $total, $metodo, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
-    } catch (PDOException $e) {
-        $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado) VALUES (1, ?, ?, ?, ?, ?, 'completada')";
-        $stmt = $conexion->prepare($sql);
-        $stmt->execute([$user_id, $id_cliente, $total, $metodo, $fecha_actual]);
-    }
+    // 3. INSERTAR VENTA
+    $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, descuento_monto_cupon, descuento_manual, codigo_cupon) VALUES (?, ?, ?, ?, ?, ?, 'completada', ?, ?, ?)";
+    $stmt = $conexion->prepare($sql);
+    $stmt->execute([$id_caja_sesion, $user_id, $id_cliente, $total, $metodo, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
     
     $venta_id = $conexion->lastInsertId();
 
-    // 3. DETALLES Y STOCK
+    // 4. DETALLES Y STOCK
     foreach($items as $item) {
         $stmtDetalle = $conexion->prepare("INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_historico, subtotal) VALUES (?, ?, ?, ?, ?)");
         $subtotal = $item['precio'] * $item['cantidad'];
@@ -66,13 +70,21 @@ try {
         }
     }
 
-    // 4. FIADO, PUNTOS Y SALDO A FAVOR
+    // 5. SI ES PAGO MIXTO, GUARDAR EL DESGLOSE
+    if($metodo === 'Mixto' && is_array($pagos_mixtos)) {
+        $stmtMix = $conexion->prepare("INSERT INTO pagos_ventas (id_venta, metodo_pago, monto) VALUES (?, ?, ?)");
+        foreach($pagos_mixtos as $metodo_nombre => $monto) {
+            if($monto > 0) {
+                $stmtMix->execute([$venta_id, $metodo_nombre, $monto]);
+            }
+        }
+    }
+
+    // 6. FIADO, PUNTOS Y SALDO A FAVOR
     if ($id_cliente > 1) { 
         // Fiado
         if ($metodo === 'CtaCorriente') {
             $monto_a_deber = $total - $saldo_favor_usado;
-            
-            // Registramos deuda solo si queda algo por pagar
             if($monto_a_deber > 0) {
                  $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'debe', ?, 'Compra Fiado', ?)")->execute([$id_cliente, $venta_id, $user_id, $monto_a_deber, $fecha_actual]);
                  $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual + ? WHERE id = ?")->execute([$monto_a_deber, $id_cliente]);
@@ -88,6 +100,16 @@ try {
         // Descontar Saldo a Favor
         if ($saldo_favor_usado > 0) {
             $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor - ? WHERE id = ?")->execute([$saldo_favor_usado, $id_cliente]);
+        }
+
+        // 7. REGISTRAR PAGO DE DEUDA
+        if ($pago_deuda > 0) {
+            $concepto = "Cobro Deuda en Ticket #" . $venta_id;
+            $stmtDeuda = $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'haber', ?, ?, ?)");
+            $stmtDeuda->execute([$id_cliente, $venta_id, $user_id, $pago_deuda, $concepto, $fecha_actual]);
+
+            $stmtUpdCli = $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual - ? WHERE id = ?");
+            $stmtUpdCli->execute([$pago_deuda, $id_cliente]);
         }
     }
     

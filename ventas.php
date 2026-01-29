@@ -1,9 +1,22 @@
 <?php
-// ventas.php - VERSIÓN CORREGIDA FINAL
+// ventas.php - CONTROL DE APERTURA
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
 
+// VERIFICAR CAJA ABIERTA
+$usuario_id = $_SESSION['usuario_id'];
+$stmt = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
+$stmt->execute([$usuario_id]);
+$caja = $stmt->fetch(PDO::FETCH_ASSOC);
+
+if(!$caja) {
+    // Si no hay caja abierta, lo mandamos a abrirla
+    header("Location: apertura_caja.php"); exit;
+}
+$id_caja_actual = $caja['id']; // Guardamos el ID real de hoy
+
+// ... (El resto del código de carga de cupones sigue igual, no lo borres) ...
 // CARGA DE CUPONES
 try {
     $sqlCupones = "SELECT * FROM cupones WHERE activo = 1 AND (fecha_limite IS NULL OR fecha_limite >= CURDATE())";
@@ -111,6 +124,8 @@ try {
                                 <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Cliente</small>
                                 <div id="lbl-nombre-cliente" class="fw-bold text-dark text-truncate" style="max-width: 150px;">Consumidor Final</div>
                                 <input type="hidden" id="id-cliente" value="1">
+                                <input type="hidden" id="val-deuda" value="0">
+                                <input type="hidden" id="pago-deuda-calculado" value="0">
                             </div>
                             <button class="btn btn-sm btn-outline-primary" onclick="abrirModalClientes()"><i class="bi bi-pencil-fill"></i> Cambiar</button>
                         </div>
@@ -161,7 +176,7 @@ try {
                                 <option value="MP">📱 MercadoPago</option>
                                 <option value="Debito">💳 Débito</option>
                                 <option value="Credito">💳 Crédito</option>
-                                <option value="CtaCorriente" class="fw-bold text-danger">🗒️ FIADO / CC</option>
+                                <option value="Mixto">💸 PAGO MIXTO</option> <option value="CtaCorriente" class="fw-bold text-danger">🗒️ FIADO / CC</option>
                             </select>
                         </div>
 
@@ -175,6 +190,11 @@ try {
                                 <span id="monto-vuelto" class="h5 fw-bold text-success">$ 0.00</span>
                                 <div id="desglose-billetes" class="alert alert-info mt-2 small mb-0" style="display:none;"></div>
                             </div>
+                        </div>
+                        
+                        <div id="box-mixto-info" class="alert alert-info d-none text-center">
+                            <i class="bi bi-info-circle"></i> Pago Mixto Seleccionado<br>
+                            <small>Detalle se confirmará al finalizar.</small>
                         </div>
 
                         <div class="d-grid gap-2 mt-auto">
@@ -205,14 +225,76 @@ try {
         </div>
     </div>
 
+    <div class="modal fade" id="modalPagoMixto" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-primary text-white">
+                    <h5 class="modal-title">💸 Desglose Pago Mixto</h5>
+                    <button type="button" class="btn-close btn-close-white" onclick="cerrarModalMixto()"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="text-center mb-3">
+                        <span class="text-muted">Total a Pagar:</span>
+                        <h2 class="fw-bold" id="total-mixto-display">$0.00</h2>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold">Efectivo</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control input-mixto" id="mix-efectivo" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold">MercadoPago / QR</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control input-mixto" id="mix-mp" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold">Tarjeta Débito</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control input-mixto" id="mix-debito" placeholder="0">
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <label class="small fw-bold">Tarjeta Crédito</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" class="form-control input-mixto" id="mix-credito" placeholder="0">
+                        </div>
+                    </div>
+                    
+                    <div class="alert alert-secondary mt-3 text-center py-2">
+                        <div class="d-flex justify-content-between">
+                            <span>Suma Pagos:</span>
+                            <span class="fw-bold" id="mix-suma">$0.00</span>
+                        </div>
+                        <div class="d-flex justify-content-between text-danger fw-bold mt-1" id="mix-restante-box">
+                            <span>Faltan:</span>
+                            <span id="mix-faltan">$0.00</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="cerrarModalMixto()">Cancelar</button>
+                    <button type="button" class="btn btn-success fw-bold" id="btn-confirmar-mixto" disabled onclick="confirmarMixto()">CONFIRMAR PAGO</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     
     <script>
         let carrito = []; 
+        let pagosMixtosConfirmados = null; // Variable para guardar el desglose
         const cuponesDB = <?php echo json_encode($cupones_db); ?>;
         const modalCliente = new bootstrap.Modal(document.getElementById('modalBuscarCliente'));
+        const modalMixto = new bootstrap.Modal(document.getElementById('modalPagoMixto'));
 
         $(document).ready(function() { verificarVentaPausada(); });
 
@@ -222,7 +304,6 @@ try {
             if(e.key === 'F7') { e.preventDefault(); pausarVenta(); }
             if(e.key === 'F8') { e.preventDefault(); recuperarVenta(); }
             if(e.key === 'F9') { e.preventDefault(); $('#btn-finalizar').click(); }
-            
             if(Swal.isVisible()) {
                 if(e.key === 'Enter') { 
                     const confirmBtn = Swal.getConfirmButton();
@@ -305,6 +386,11 @@ try {
             $('#monto-vuelto').text('$ 0.00'); 
             $('#desglose-billetes').hide().html(''); 
             $('#usar-saldo').prop('checked', false); 
+            $('#pago-deuda-calculado').val(0);
+            pagosMixtosConfirmados = null;
+            $('#metodo-pago').val('Efectivo');
+            $('#box-vuelto').show();
+            $('#box-mixto-info').addClass('d-none');
             render(); 
         }
         
@@ -321,13 +407,11 @@ try {
             calc();
         }
 
-        // Función calc() - LÓGICA AUTOMÁTICA SALDO
         function calc(){ 
             let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0;
             let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
             let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
             
-            // --- Lógica Saldo ---
             let saldoUsado = 0;
             let aPagarTemp = subtotal - ((subtotal * porcDesc) / 100) - manualDesc;
             
@@ -335,7 +419,6 @@ try {
                 let disponible = parseFloat($('#val-saldo').val()) || 0;
                 saldoUsado = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
             }
-            // -------------------
 
             let descuentoCupon = (subtotal * porcDesc) / 100;
             let totalFinal = subtotal - descuentoCupon - manualDesc - saldoUsado; 
@@ -343,6 +426,7 @@ try {
             if(totalFinal < 0) totalFinal = 0; 
             
             $('#total-venta').text('$ ' + totalFinal.toFixed(2));
+            $('#total-venta').attr('data-total-final', totalFinal);
             
             let infoTxt = '';
             if(descuentoCupon > 0) infoTxt += 'Cupón: -$' + descuentoCupon.toFixed(2) + ' | ';
@@ -352,32 +436,125 @@ try {
             if(infoTxt != '') $('#info-subtotal').text(infoTxt).show(); 
             else $('#info-subtotal').hide();
 
-            let paga = parseFloat($('#paga-con').val()) || 0; 
-            let vuelto = paga - totalFinal;
+            // LOGICA DEUDA (SOLO SI NO ES MIXTO)
+            if($('#metodo-pago').val() !== 'Mixto') {
+                let paga = parseFloat($('#paga-con').val()) || 0; 
+                let vueltoPre = paga - totalFinal; 
+                
+                let deudaCliente = parseFloat($('#val-deuda').val()) || 0;
+                let montoDeudaCobrar = 0;
 
-            if(vuelto > 0) {
-                $('#monto-vuelto').text('$ ' + vuelto.toFixed(2));
-                let resto = vuelto;
-                let textoBilletes = '<strong>Entregar:</strong><br>';
-                const billetes = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
-                billetes.forEach(b => {
-                    if(resto >= b) {
-                        let cant = Math.floor(resto / b);
-                        if(cant > 0) {
-                            textoBilletes += `${cant} x $${b}<br>`;
-                            resto -= (cant * b);
+                if(vueltoPre > 0 && deudaCliente > 0) {
+                    montoDeudaCobrar = (vueltoPre >= deudaCliente) ? deudaCliente : vueltoPre;
+                }
+                
+                $('#pago-deuda-calculado').val(montoDeudaCobrar);
+
+                let vueltoFinal = vueltoPre - montoDeudaCobrar;
+
+                if(vueltoFinal >= 0 && paga > 0) { 
+                    let textoVuelto = '$ ' + vueltoFinal.toFixed(2);
+                    if(montoDeudaCobrar > 0) textoVuelto += ' <span class="badge bg-danger ms-2" style="font-size:0.6em">Se cobró deuda: $' + montoDeudaCobrar.toFixed(2) + '</span>';
+                    $('#monto-vuelto').html(textoVuelto);
+                    
+                    let resto = vueltoFinal;
+                    let textoBilletes = '<strong>Entregar:</strong><br>';
+                    const billetes = [20000, 10000, 2000, 1000, 500, 200, 100, 50, 20, 10];
+                    billetes.forEach(b => {
+                        if(resto >= b) {
+                            let cant = Math.floor(resto / b);
+                            if(cant > 0) {
+                                textoBilletes += `${cant} x $${b}<br>`;
+                                resto -= (cant * b);
+                            }
                         }
-                    }
-                });
-                if(resto > 0) textoBilletes += `Monedas: $${resto.toFixed(2)}`;
-                $('#desglose-billetes').html(textoBilletes).show();
-            } else {
-                $('#monto-vuelto').text('$ 0.00');
-                $('#desglose-billetes').hide();
+                    });
+                    if(resto > 0) textoBilletes += `Monedas: $${resto.toFixed(2)}`;
+                    $('#desglose-billetes').html(textoBilletes).show();
+                } else {
+                    $('#monto-vuelto').text('$ 0.00');
+                    $('#desglose-billetes').hide();
+                }
             }
         }
         
-        $('#metodo-pago').change(function(){ $(this).val()=='Efectivo'?$('#box-vuelto').slideDown():$('#box-vuelto').slideUp(); });
+        // MANEJO DE METODO DE PAGO
+        $('#metodo-pago').change(function(){ 
+            let val = $(this).val();
+            if(val == 'Mixto') {
+                $('#box-vuelto').hide();
+                $('#box-mixto-info').removeClass('d-none');
+                abrirModalMixto();
+            } else if(val == 'Efectivo') {
+                $('#box-vuelto').slideDown();
+                $('#box-mixto-info').addClass('d-none');
+                pagosMixtosConfirmados = null; // Resetear mixto si cambia
+            } else {
+                $('#box-vuelto').slideUp();
+                $('#box-mixto-info').addClass('d-none');
+                pagosMixtosConfirmados = null;
+            }
+            calc();
+        });
+
+        // LOGICA MODAL MIXTO
+        function abrirModalMixto() {
+            if(carrito.length === 0) {
+                Swal.fire('Error', 'Carrito vacío', 'error');
+                $('#metodo-pago').val('Efectivo').trigger('change');
+                return;
+            }
+            calc(); // Asegurar total actualizado
+            let total = parseFloat($('#total-venta').attr('data-total-final')) || 0;
+            $('#total-mixto-display').text('$' + total.toFixed(2));
+            $('.input-mixto').val(''); // Limpiar inputs
+            calcRestanteMixto();
+            modalMixto.show();
+        }
+
+        $('.input-mixto').on('keyup change', calcRestanteMixto);
+
+        function calcRestanteMixto() {
+            let total = parseFloat($('#total-venta').attr('data-total-final')) || 0;
+            let ef = parseFloat($('#mix-efectivo').val()) || 0;
+            let mp = parseFloat($('#mix-mp').val()) || 0;
+            let db = parseFloat($('#mix-debito').val()) || 0;
+            let cr = parseFloat($('#mix-credito').val()) || 0;
+            
+            let suma = ef + mp + db + cr;
+            let faltan = total - suma;
+            
+            $('#mix-suma').text('$' + suma.toFixed(2));
+            
+            if(Math.abs(faltan) < 0.1) {
+                $('#mix-restante-box').html('<span class="text-success fw-bold">¡Completo!</span>');
+                $('#btn-confirmar-mixto').prop('disabled', false);
+            } else if(faltan > 0) {
+                $('#mix-restante-box').html('<span>Faltan:</span> <span class="text-danger">$' + faltan.toFixed(2) + '</span>');
+                $('#btn-confirmar-mixto').prop('disabled', true);
+            } else {
+                $('#mix-restante-box').html('<span>Excede por:</span> <span class="text-warning">$' + Math.abs(faltan).toFixed(2) + '</span>');
+                $('#btn-confirmar-mixto').prop('disabled', true);
+            }
+        }
+
+        function confirmarMixto() {
+            pagosMixtosConfirmados = {
+                'Efectivo': parseFloat($('#mix-efectivo').val()) || 0,
+                'MP': parseFloat($('#mix-mp').val()) || 0,
+                'Debito': parseFloat($('#mix-debito').val()) || 0,
+                'Credito': parseFloat($('#mix-credito').val()) || 0
+            };
+            modalMixto.hide();
+        }
+
+        function cerrarModalMixto() {
+            modalMixto.hide();
+            // Si cancela y no tenía confirmado, volvemos a efectivo
+            if(!pagosMixtosConfirmados) {
+                $('#metodo-pago').val('Efectivo').trigger('change');
+            }
+        }
 
         window.abrirModalClientes = function() { $('#input-search-modal').val(''); $('#lista-clientes-modal').html(''); modalCliente.show(); setTimeout(()=>$('#input-search-modal').focus(),500); };
         
@@ -388,7 +565,6 @@ try {
                     let dni = c.dni ? c.dni : '--'; 
                     let saldoClass = c.saldo_actual > 0 ? 'text-danger fw-bold' : 'text-success'; 
                     let textoSaldo = c.saldo_actual > 0 ? 'Debe $' + c.saldo_actual : 'Al día'; 
-                    // PASAMOS EL SALDO A LA FUNCIÓN
                     html += `<button class="list-group-item list-group-item-action p-3" onclick="seleccionarCliente(${c.id}, '${c.nombre}', ${c.saldo_actual}, ${c.saldo_favor || 0})"><div class="d-flex w-100 justify-content-between align-items-center"><div><h6 class="mb-1 fw-bold">${c.nombre}</h6><div class="small text-muted">DNI: ${dni}</div></div><div class="text-end"><small class="${saldoClass}">${textoSaldo}</small></div></div></button>`; 
                 }); else html = '<div class="p-3 text-center text-muted">No se encontraron clientes.</div>'; $('#lista-clientes-modal').html(html);
             });
@@ -397,22 +573,22 @@ try {
         window.seleccionarCliente=function(id,n,d,s){ 
             $('#id-cliente').val(id); 
             $('#lbl-nombre-cliente').text(n); 
+            $('#val-deuda').val(d);
             
-            d > 0 ? ($('#lbl-deuda').text('$'+d), $('#info-deuda').removeClass('d-none')) : $('#info-deuda').addClass('d-none'); 
+            if(d > 0) { $('#lbl-deuda').text('$'+d); $('#info-deuda').removeClass('d-none'); } 
+            else { $('#info-deuda').addClass('d-none'); }
             
-            // LÓGICA ACTIVACIÓN AUTOMÁTICA SALDO
             let saldo = parseFloat(s || 0);
             if(saldo > 0) {
                 $('#lbl-saldo').text('$' + saldo.toFixed(2));
                 $('#val-saldo').val(saldo);
                 $('#info-saldo').removeClass('d-none');
-                $('#usar-saldo').prop('checked', true); // <--- ACTIVAR AUTOMÁTICO
+                $('#usar-saldo').prop('checked', true); 
             } else {
                 $('#info-saldo').addClass('d-none');
                 $('#val-saldo').val(0);
                 $('#usar-saldo').prop('checked', false);
             }
-
             modalCliente.hide(); validarCupon(); $('#buscar-producto').focus(); calc(); 
         };
 
@@ -423,7 +599,11 @@ try {
 
             if(m=='CtaCorriente'&&c==1) return Swal.fire('Error','No se fía a Consumidor Final','warning');
             
-            // PREPARAR SALDO PARA ENVÍO
+            // VALIDACIÓN PAGO MIXTO
+            if(m == 'Mixto' && !pagosMixtosConfirmados) {
+                return Swal.fire('Atención', 'Seleccionaste Pago Mixto pero no completaste los montos.', 'warning').then(() => abrirModalMixto());
+            }
+
             let saldoUsadoEnvio = 0;
             if($('#usar-saldo').is(':checked')){
                 let disponible = parseFloat($('#val-saldo').val()) || 0;
@@ -431,30 +611,24 @@ try {
                 saldoUsadoEnvio = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
             }
 
+            let deudaACobrar = parseFloat($('#pago-deuda-calculado').val()) || 0;
+            // Si es mixto, por ahora no cobramos deuda automáticamente para no complicar el cálculo manual
+            if(m == 'Mixto') deudaACobrar = 0; 
+
             $.post('acciones/procesar_venta.php', {
                 items: carrito, total: totalFinal, metodo: m, id_cliente: c,
                 cupon_codigo: cuponCode, desc_cupon_monto: descCuponPlata, desc_manual_monto: descManual,
-                saldo_favor_usado: saldoUsadoEnvio
+                saldo_favor_usado: saldoUsadoEnvio,
+                pago_deuda: deudaACobrar,
+                pagos_mixtos: (m == 'Mixto') ? pagosMixtosConfirmados : null // Enviamos el desglose
             }, function(r){
                 if(r.status=='success'){ 
                     Swal.fire({
-                        title: '¡Venta Registrada!',
-                        text: "¿Deseas imprimir el ticket?",
-                        icon: 'success',
-                        showCancelButton: true,
-                        confirmButtonText: '<i class="bi bi-printer"></i> Imprimir Ticket',
-                        cancelButtonText: 'Nueva Venta',
-                        confirmButtonColor: '#0d6efd',
-                        cancelButtonColor: '#6c757d'
+                        title: '¡Venta Registrada!', text: "¿Deseas imprimir el ticket?", icon: 'success', showCancelButton: true, confirmButtonText: '<i class="bi bi-printer"></i> Imprimir Ticket', cancelButtonText: 'Nueva Venta'
                     }).then((result) => {
-                        if (result.isConfirmed) {
-                            window.open('ticket.php?id=' + r.id_venta, 'Ticket', 'width=350,height=500');
-                        }
-                        vaciarCarrito(); 
-                        seleccionarCliente(1,'Consumidor Final',0,0); 
-                        $('#buscar-producto').focus();
+                        if (result.isConfirmed) { window.open('ticket.php?id=' + r.id_venta, 'Ticket', 'width=350,height=500'); }
+                        vaciarCarrito(); seleccionarCliente(1,'Consumidor Final',0,0); $('#buscar-producto').focus();
                     });
-
                 } else Swal.fire('Error',r.msg,'error');
             },'json');
         });
@@ -469,19 +643,9 @@ try {
                 if(data.length > 0) {
                     data.forEach(p => {
                         let nombre = p.descripcion.length > 15 ? p.descripcion.substring(0,15)+'..' : p.descripcion;
-                        html += `
-                        <div class="col-4 col-md-3 col-lg-2">
-                            <div class="card h-100 shadow-sm border-0 producto-rapido" onclick='seleccionarProducto(${JSON.stringify(p)})' style="cursor:pointer;">
-                                <div class="card-body p-2 text-center">
-                                    <div class="fw-bold small text-truncate" title="${p.descripcion}">${nombre}</div>
-                                    <div class="text-primary fw-bold small">$${p.precio_venta}</div>
-                                </div>
-                            </div>
-                        </div>`;
+                        html += `<div class="col-4 col-md-3 col-lg-2"><div class="card h-100 shadow-sm border-0 producto-rapido" onclick='seleccionarProducto(${JSON.stringify(p)})' style="cursor:pointer;"><div class="card-body p-2 text-center"><div class="fw-bold small text-truncate" title="${p.descripcion}">${nombre}</div><div class="text-primary fw-bold small">$${p.precio_venta}</div></div></div></div>`;
                     });
-                } else {
-                    html = '<div class="text-center w-100 text-muted small">No hay productos en esta categoría.</div>';
-                }
+                } else { html = '<div class="text-center w-100 text-muted small">No hay productos en esta categoría.</div>'; }
                 $('#grid-rapidos').html(html);
             });
         }

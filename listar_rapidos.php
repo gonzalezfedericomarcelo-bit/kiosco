@@ -3,18 +3,14 @@
 require_once '../includes/db.php';
 
 $cat = $_GET['cat'] ?? '';
-$filtro = "";
 
-if($cat != '') {
-    // Si hay categoría, filtramos por ella
-    $filtro = "AND id_categoria = $cat";
-} 
+if(!empty($cat)) {
+    $stmt = $conexion->prepare("SELECT * FROM productos WHERE id_categoria = ? AND activo = 1 LIMIT 12");
+    $stmt->execute([$cat]);
+} else {
+    // Productos destacados o random
+    $stmt = $conexion->query("SELECT * FROM productos WHERE activo = 1 ORDER BY stock_actual DESC LIMIT 12");
+}
 
-// Traemos los productos activos.
-// TRUCO: Si quieres "Más Vendidos", haríamos un JOIN con ventas, pero por ahora mostramos todos ordenados por nombre para no complicar.
-$sql = "SELECT id, descripcion, precio_venta, imagen_url FROM productos WHERE activo = 1 $filtro ORDER BY descripcion ASC LIMIT 20";
-$stmt = $conexion->query($sql);
-$productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-echo json_encode($productos);
+echo json_encode($stmt->fetchAll(PDO::FETCH_ASSOC));
 ?>

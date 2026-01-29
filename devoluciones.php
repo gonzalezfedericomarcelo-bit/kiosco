@@ -1,83 +1,115 @@
 <?php
-// devoluciones.php - CORREGIDO BASADO EN TU DASHBOARD.PHP
+// devoluciones.php - FINAL (Mensajes JS Seguros)
 session_start();
+error_reporting(0); 
 
-// 1. CONEXIÓN (Igual que en dashboard.php)
-if (file_exists('includes/db.php')) {
-    require_once 'includes/db.php';
-} elseif (file_exists('db.php')) {
-    require_once 'db.php';
-} else {
-    die("Error: No se encuentra db.php");
-}
+// 1. CONEXIÓN
+if (file_exists('includes/db.php')) { require_once 'includes/db.php'; } 
+elseif (file_exists('db.php')) { require_once 'db.php'; } 
+else { die("Error: No se encuentra db.php"); }
 
 // 2. SEGURIDAD
-if (!isset($_SESSION['usuario_id'])) {
-    header("Location: index.php");
-    exit;
+if (!isset($_SESSION['usuario_id'])) { echo "<script>window.location='index.php';</script>"; exit; }
+$user_id = $_SESSION['usuario_id'];
+
+// 3. ASEGURAR TABLA
+try {
+    $conexion->exec("CREATE TABLE IF NOT EXISTS devoluciones (id INT AUTO_INCREMENT PRIMARY KEY, id_venta_original INT, id_producto INT, cantidad DECIMAL(10,2), monto_devuelto DECIMAL(10,2), fecha DATETIME, id_usuario INT)");
+} catch(Exception $e) { }
+
+// 4. DETECTAR CAJA ABIERTA
+$stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
+$stmtCaja->execute([$user_id]);
+$cajaAbierta = $stmtCaja->fetch(PDO::FETCH_ASSOC);
+$id_caja_actual = $cajaAbierta ? $cajaAbierta['id'] : null;
+
+// 5. PROCESAR DEVOLUCIÓN
+if (isset($_POST['devolver'])) {
+    $id_venta = $_POST['id_venta'];
+    $id_producto = $_POST['id_producto'];
+    $cantidad = $_POST['cantidad'];
+    $monto = $_POST['monto'];
+
+    $mensaje = '';
+    $tipo_msg = '';
+
+    try {
+        $conexion->beginTransaction();
+
+        $check = $conexion->prepare("SELECT id FROM devoluciones WHERE id_venta_original = ? AND id_producto = ?");
+        $check->execute([$id_venta, $id_producto]);
+        if ($check->rowCount() > 0) throw new Exception("¡Este producto ya fue devuelto anteriormente!");
+
+        $stmtV = $conexion->prepare("SELECT metodo_pago, id_cliente FROM ventas WHERE id = ?");
+        $stmtV->execute([$id_venta]);
+        $ventaOriginal = $stmtV->fetch(PDO::FETCH_ASSOC);
+
+        $stmt = $conexion->prepare("INSERT INTO devoluciones (id_venta_original, id_producto, cantidad, monto_devuelto, fecha, id_usuario) VALUES (?, ?, ?, ?, NOW(), ?)");
+        $stmt->execute([$id_venta, $id_producto, $cantidad, $monto, $user_id]);
+
+        $stmtUP = $conexion->prepare("UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?");
+        $stmtUP->execute([$cantidad, $id_producto]);
+
+        if ($ventaOriginal) {
+            if ($ventaOriginal['metodo_pago'] === 'CtaCorriente' && $ventaOriginal['id_cliente'] > 1) {
+                $concepto = "Devolución Prod. Ticket #$id_venta";
+                $stmtCC = $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'haber', ?, ?, NOW())");
+                $stmtCC->execute([$ventaOriginal['id_cliente'], $id_venta, $user_id, $monto, $concepto]);
+                $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual - ? WHERE id = ?")->execute([$monto, $ventaOriginal['id_cliente']]);
+                
+                $mensaje = "Devolución EXITOSA. Se ajustó la deuda.";
+                $tipo_msg = "success";
+            } elseif ($ventaOriginal['metodo_pago'] === 'Efectivo') {
+                if ($id_caja_actual) {
+                    $descGasto = "Devolución Efectivo Ticket #$id_venta";
+                    $conexion->prepare("INSERT INTO gastos (descripcion, monto, categoria, fecha, id_usuario, id_caja_sesion) VALUES (?, ?, 'Devoluciones', NOW(), ?, ?)")->execute([$descGasto, $monto, $user_id, $id_caja_actual]);
+                    
+                    $mensaje = "Devolución EXITOSA. Se restó de la caja.";
+                    $tipo_msg = "success";
+                } else {
+                    $mensaje = "Stock devuelto, pero NO hay caja abierta para descontar el dinero.";
+                    $tipo_msg = "warning";
+                }
+            } else {
+                $mensaje = "Devolución OK (Pago original: " . $ventaOriginal['metodo_pago'] . ").";
+                $tipo_msg = "info";
+            }
+        }
+
+        $conexion->commit();
+        echo "<script>window.location.href='devoluciones.php?id_ticket=$id_venta&msg=".urlencode($mensaje)."&tipo=$tipo_msg';</script>";
+        exit;
+        
+    } catch (Exception $e) {
+        if ($conexion->inTransaction()) { $conexion->rollBack(); }
+        echo "<script>alert('" . addslashes($e->getMessage()) . "'); window.location.href='devoluciones.php?id_ticket=$id_venta';</script>";
+        exit;
+    }
 }
 
-$mensaje = '';
+// 6. DATOS VISTA
 $venta = null;
 $items = [];
+$productos_devueltos = [];
+$id_ticket_buscado = $_GET['id_ticket'] ?? '';
 
-// 3. BUSCAR TICKET
-if (isset($_GET['id_ticket']) && $_GET['id_ticket'] > 0) {
-    $id = $_GET['id_ticket'];
-
-    // Buscar Venta
-    $sql = "SELECT v.*, c.nombre as cliente 
-            FROM ventas v 
-            LEFT JOIN clientes c ON v.id_cliente = c.id 
-            WHERE v.id = ?";
-    $stmt = $conexion->prepare($sql);
-    $stmt->execute([$id]);
+if ($id_ticket_buscado > 0) {
+    $stmt = $conexion->prepare("SELECT v.*, c.nombre as cliente FROM ventas v LEFT JOIN clientes c ON v.id_cliente = c.id WHERE v.id = ?");
+    $stmt->execute([$id_ticket_buscado]);
     $venta = $stmt->fetch(PDO::FETCH_ASSOC);
 
     if ($venta) {
-        // Buscar Productos (USANDO 'detalle_ventas' PLURAL SEGÚN TU SQL)
-        $sqlDet = "SELECT d.*, p.descripcion 
-                   FROM detalle_ventas d 
-                   JOIN productos p ON d.id_producto = p.id 
-                   WHERE d.id_venta = ?";
-        $stmtDet = $conexion->prepare($sqlDet);
-        $stmtDet->execute([$id]);
+        $stmtDet = $conexion->prepare("SELECT d.*, p.descripcion FROM detalle_ventas d JOIN productos p ON d.id_producto = p.id WHERE d.id_venta = ?");
+        $stmtDet->execute([$id_ticket_buscado]);
         $items = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
-    } else {
-        $mensaje = "No se encontró el Ticket #$id";
+
+        $stmtDevs = $conexion->prepare("SELECT id_producto FROM devoluciones WHERE id_venta_original = ?");
+        $stmtDevs->execute([$id_ticket_buscado]);
+        $productos_devueltos = $stmtDevs->fetchAll(PDO::FETCH_COLUMN);
     }
 }
 
-// 4. PROCESAR DEVOLUCIÓN
-if (isset($_POST['devolver'])) {
-    try {
-        $conexion->beginTransaction();
-        
-        // Crear tabla si no existe (Seguridad)
-        $conexion->exec("CREATE TABLE IF NOT EXISTS devoluciones (id INT AUTO_INCREMENT PRIMARY KEY, id_venta_original INT, id_producto INT, cantidad DECIMAL(10,2), monto_devuelto DECIMAL(10,2), fecha DATETIME, id_usuario INT)");
-
-        // Insertar devolución
-        $stmt = $conexion->prepare("INSERT INTO devoluciones (id_venta_original, id_producto, cantidad, monto_devuelto, fecha, id_usuario) VALUES (?, ?, ?, ?, NOW(), ?)");
-        $stmt->execute([$_POST['id_venta'], $_POST['id_producto'], $_POST['cantidad'], $_POST['monto'], $_SESSION['usuario_id']]);
-
-        // Retornar Stock
-        $stmtUP = $conexion->prepare("UPDATE productos SET stock_actual = stock_actual + ? WHERE id = ?");
-        $stmtUP->execute([$_POST['cantidad'], $_POST['id_producto']]);
-
-        $conexion->commit();
-        echo "<script>alert('Devolución procesada correctamente'); window.location='devoluciones.php?id_ticket=".$_POST['id_venta']."';</script>";
-        
-    } catch (Exception $e) {
-        $conexion->rollBack();
-        echo "<script>alert('Error: ".$e->getMessage()."');</script>";
-    }
-}
-
-// 5. LISTA LATERAL
-$ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre 
-                             FROM ventas v 
-                             LEFT JOIN clientes c ON v.id_cliente = c.id 
-                             ORDER BY v.id DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+$ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre, (SELECT COUNT(*) FROM devoluciones d WHERE d.id_venta_original = v.id) as tiene_dev FROM ventas v LEFT JOIN clientes c ON v.id_cliente = c.id ORDER BY v.id DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -87,17 +119,18 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
     <title>Devoluciones</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        .row-devuelto { background-color: #ffe6e6 !important; color: #dc3545; }
+        .row-devuelto td { color: #dc3545; text-decoration: line-through; }
+        .badge-dev { font-size: 0.7rem; }
+    </style>
 </head>
 <body class="bg-light">
 
     <?php 
-    if(file_exists('includes/menu.php')) {
-        include 'includes/menu.php';
-    } elseif(file_exists('menu.php')) {
-        include 'menu.php';
-    } else {
-        echo "<div class='alert alert-danger'>No se encuentra el archivo de menú.</div>";
-    }
+    if(file_exists('includes/menu.php')) include 'includes/menu.php'; 
+    elseif(file_exists('menu.php')) include 'menu.php';
     ?>
 
     <div class="container pb-5 mt-4">
@@ -109,10 +142,9 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
                     <div class="card-header bg-dark text-white fw-bold">Buscar Ticket</div>
                     <div class="card-body">
                         <form method="GET" class="d-flex gap-2">
-                            <input type="number" name="id_ticket" class="form-control" placeholder="N° Ticket" required value="<?php echo $_GET['id_ticket'] ?? ''; ?>">
+                            <input type="number" name="id_ticket" class="form-control" placeholder="N° Ticket" required value="<?php echo htmlspecialchars($id_ticket_buscado); ?>">
                             <button class="btn btn-primary fw-bold">Buscar</button>
                         </form>
-                        <?php if($mensaje) echo "<div class='alert alert-warning mt-2 p-2 small'>$mensaje</div>"; ?>
                     </div>
                 </div>
 
@@ -123,11 +155,14 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
                             <a href="devoluciones.php?id_ticket=<?php echo $u['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
                                 <div>
                                     <span class="fw-bold text-primary">#<?php echo $u['id']; ?></span>
-                                    <small class="d-block text-muted" style="font-size:0.75rem"><?php echo $u['nombre'] ?? 'Consumidor Final'; ?></small>
+                                    <small class="d-block text-muted" style="font-size:0.75rem"><?php echo substr($u['nombre'] ?? 'Consumidor Final', 0, 15); ?></small>
                                 </div>
                                 <div class="text-end">
                                     <span class="fw-bold text-dark">$<?php echo number_format($u['total'], 0); ?></span>
                                     <small class="d-block text-muted" style="font-size:0.75rem"><?php echo date('d/m H:i', strtotime($u['fecha'])); ?></small>
+                                    <?php if($u['tiene_dev'] > 0): ?>
+                                        <span class="badge bg-warning text-dark badge-dev d-block mt-1">⚠️ Con Devolución</span>
+                                    <?php endif; ?>
                                 </div>
                             </a>
                         <?php endforeach; ?>
@@ -144,39 +179,41 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
                         </div>
                         <div class="card-body">
                             <div class="alert alert-light border d-flex justify-content-between align-items-center">
-                                <span><strong>Cliente:</strong> <?php echo $venta['cliente'] ?? 'Consumidor Final'; ?></span>
+                                <div>
+                                    <strong>Cliente:</strong> <?php echo $venta['cliente'] ?? 'Consumidor Final'; ?><br>
+                                    <small class="text-muted">Pago: <?php echo $venta['metodo_pago']; ?></small>
+                                </div>
                                 <span class="badge bg-success">Completada</span>
                             </div>
                             
                             <div class="table-responsive">
                                 <table class="table table-hover align-middle">
                                     <thead class="table-light">
-                                        <tr>
-                                            <th>Producto</th>
-                                            <th class="text-center">Cant.</th>
-                                            <th class="text-end">Precio</th>
-                                            <th class="text-end">Subtotal</th>
-                                            <th class="text-center">Acción</th>
-                                        </tr>
+                                        <tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Acción</th></tr>
                                     </thead>
                                     <tbody>
-                                        <?php foreach($items as $i): ?>
-                                        <tr>
-                                            <td><?php echo $i['descripcion']; ?></td>
+                                        <?php foreach($items as $i): 
+                                            $ya_devuelto = in_array($i['id_producto'], $productos_devueltos);
+                                            $clase_row = $ya_devuelto ? 'row-devuelto' : '';
+                                        ?>
+                                        <tr class="<?php echo $clase_row; ?>">
+                                            <td><?php echo $i['descripcion']; ?><?php if($ya_devuelto): ?><span class="badge bg-danger ms-2">DEVUELTO</span><?php endif; ?></td>
                                             <td class="text-center fw-bold"><?php echo floatval($i['cantidad']); ?></td>
-                                            <td class="text-end text-muted">$<?php echo number_format($i['precio_historico'] ?? $i['precio_unitario'], 2); ?></td>
+                                            <td class="text-end">$<?php echo number_format($i['precio_historico'] ?? $i['precio_unitario'] ?? 0, 2); ?></td>
                                             <td class="text-end fw-bold">$<?php echo number_format($i['subtotal'], 2); ?></td>
                                             <td class="text-center">
-                                                <form method="POST" onsubmit="return confirm('¿Devolver ítem?');">
-                                                    <input type="hidden" name="devolver" value="1">
-                                                    <input type="hidden" name="id_venta" value="<?php echo $venta['id']; ?>">
-                                                    <input type="hidden" name="id_producto" value="<?php echo $i['id_producto']; ?>">
-                                                    <input type="hidden" name="cantidad" value="<?php echo $i['cantidad']; ?>">
-                                                    <input type="hidden" name="monto" value="<?php echo $i['subtotal']; ?>">
-                                                    <button class="btn btn-outline-danger btn-sm fw-bold">
-                                                        <i class="bi bi-arrow-return-left"></i> Devolver
-                                                    </button>
-                                                </form>
+                                                <?php if($ya_devuelto): ?>
+                                                    <button class="btn btn-secondary btn-sm fw-bold" disabled><i class="bi bi-x-circle"></i> Ya Devuelto</button>
+                                                <?php else: ?>
+                                                    <form method="POST" class="form-devolucion">
+                                                        <input type="hidden" name="devolver" value="1">
+                                                        <input type="hidden" name="id_venta" value="<?php echo $venta['id']; ?>">
+                                                        <input type="hidden" name="id_producto" value="<?php echo $i['id_producto']; ?>">
+                                                        <input type="hidden" name="cantidad" value="<?php echo $i['cantidad']; ?>">
+                                                        <input type="hidden" name="monto" value="<?php echo $i['subtotal']; ?>">
+                                                        <button type="button" class="btn btn-outline-danger btn-sm fw-bold btn-confirmar-dev"><i class="bi bi-arrow-return-left"></i> Devolver</button>
+                                                    </form>
+                                                <?php endif; ?>
                                             </td>
                                         </tr>
                                         <?php endforeach; ?>
@@ -188,7 +225,7 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
                 <?php else: ?>
                     <div class="alert alert-secondary text-center py-5 border-0">
                         <i class="bi bi-receipt display-1 opacity-25"></i>
-                        <h4 class="mt-3 text-muted fw-light">Selecciona un ticket</h4>
+                        <h4 class="mt-3 text-muted fw-light">Selecciona un ticket para ver detalles</h4>
                     </div>
                 <?php endif; ?>
             </div>
@@ -196,5 +233,45 @@ $ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <script>
+        <?php if(isset($_GET['msg'])): ?>
+            // Usamos json_encode para asegurar que el texto sea seguro para JS
+            Swal.fire({
+                title: 'Operación Finalizada',
+                text: <?php echo json_encode(urldecode($_GET['msg'])); ?>,
+                icon: "<?php echo $_GET['tipo'] ?? 'info'; ?>",
+                confirmButtonColor: '#0d6efd',
+                confirmButtonText: 'Entendido'
+            }).then(() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete('msg');
+                url.searchParams.delete('tipo');
+                window.history.replaceState({}, document.title, url);
+            });
+        <?php endif; ?>
+
+        document.querySelectorAll('.btn-confirmar-dev').forEach(btn => {
+            btn.addEventListener('click', function() {
+                let form = this.closest('form');
+                Swal.fire({
+                    title: '¿Confirmar Devolución?',
+                    html: "Se devolverá el stock y se descontará el dinero.<br><b>Esta acción no se puede deshacer.</b>",
+                    icon: 'warning',
+                    showCancelButton: true,
+                    confirmButtonColor: '#dc3545',
+                    cancelButtonColor: '#6c757d',
+                    confirmButtonText: 'Sí, registrar devolución',
+                    cancelButtonText: 'Cancelar'
+                }).then((result) => {
+                    if (result.isConfirmed) {
+                        this.disabled = true;
+                        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+                        form.submit();
+                    }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

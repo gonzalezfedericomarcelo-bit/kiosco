@@ -1,5 +1,5 @@
 <?php
-// ticket.php - TU VERSIÓN ORIGINAL MODIFICADA
+// ticket.php - VERSIÓN FINAL CON MIXTOS
 session_start();
 require_once 'includes/db.php';
 
@@ -18,7 +18,7 @@ $venta = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if(!$venta) die("Venta no encontrada");
 
-// 2. DETALLES
+// 2. DETALLES PRODUCTOS
 $stmtDet = $conexion->prepare("SELECT d.*, p.descripcion 
                               FROM detalle_ventas d 
                               JOIN productos p ON d.id_producto = p.id 
@@ -26,22 +26,27 @@ $stmtDet = $conexion->prepare("SELECT d.*, p.descripcion
 $stmtDet->execute([$id_venta]);
 $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
 
-// 3. CONFIGURACIÓN NEGOCIO
+// 3. DATOS DEUDA Y PAGOS MIXTOS
+$stmtDeuda = $conexion->prepare("SELECT monto FROM movimientos_cc WHERE id_venta = ? AND tipo = 'haber' LIMIT 1");
+$stmtDeuda->execute([$id_venta]);
+$pago_deuda_info = $stmtDeuda->fetch(PDO::FETCH_ASSOC);
+$monto_deuda_pagado = $pago_deuda_info ? $pago_deuda_info['monto'] : 0;
+
+$pagos_mixtos = [];
+if($venta['metodo_pago'] === 'Mixto') {
+    $stmtMix = $conexion->prepare("SELECT * FROM pagos_ventas WHERE id_venta = ?");
+    $stmtMix->execute([$id_venta]);
+    $pagos_mixtos = $stmtMix->fetchAll(PDO::FETCH_ASSOC);
+}
+
+// 4. CONFIGURACIÓN
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 
-// --- LÓGICA AGREGADA PARA CALCULAR SALDO A FAVOR USADO ---
+// CÁLCULO SALDO A FAVOR
 $subtotal_real_productos = 0;
-foreach($detalles as $d) {
-    $subtotal_real_productos += $d['subtotal'];
-}
-// El total pagado está en $venta['total']
-// Los descuentos explícitos están en $venta['descuento_monto_cupon'] y $venta['descuento_manual']
-// La diferencia matemática es lo que se pagó con saldo a favor
+foreach($detalles as $d) $subtotal_real_productos += $d['subtotal'];
 $saldo_favor_usado = $subtotal_real_productos - ($venta['descuento_monto_cupon'] ?? 0) - ($venta['descuento_manual'] ?? 0) - $venta['total'];
-
-// Ajuste por decimales (flotantes)
 if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
-// ---------------------------------------------------------
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -50,36 +55,20 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Ticket #<?php echo $id_venta; ?></title>
     <style>
-        /* ESTILOS TÉRMICOS (RESET) - TUS ESTILOS ORIGINALES */
         * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Courier New', Courier, monospace; }
         body { width: 100%; background: #fff; color: #000; font-size: 12px; }
-        
-        .ticket {
-            width: 100%;
-            max-width: 300px; /* Ancho máximo para 80mm, se adapta a menos */
-            margin: 0 auto;
-            padding: 5px;
-        }
-        
+        .ticket { width: 100%; max-width: 300px; margin: 0 auto; padding: 5px; }
         .centrado { text-align: center; }
         .derecha { text-align: right; }
         .negrita { font-weight: bold; }
-        
         .linea { border-top: 1px dashed #000; margin: 5px 0; }
-        
         table { width: 100%; border-collapse: collapse; }
         td { vertical-align: top; padding: 2px 0; }
-        
         .cantidad { width: 25px; }
         .producto { }
         .precio { text-align: right; width: 60px; }
-
         .totales { margin-top: 5px; font-size: 14px; }
-        
-        /* Ocultar botón en impresión */
-        @media print {
-            .no-print { display: none; }
-        }
+        @media print { .no-print { display: none; } }
     </style>
 </head>
 <body onload="window.print()">
@@ -138,8 +127,24 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
                 <p>Saldo Favor: -$<?php echo number_format($saldo_favor_usado, 2, ',', '.'); ?></p>
             <?php endif; ?>
 
+            <?php if($monto_deuda_pagado > 0): ?>
+                <div style="border-top: 1px dashed #000; margin: 3px 0; padding-top: 2px;">
+                    <p>Cobro Deuda: $<?php echo number_format($monto_deuda_pagado, 2, ',', '.'); ?></p>
+                </div>
+            <?php endif; ?>
+
             <p class="negrita" style="font-size: 16px; margin-top: 5px;">TOTAL: $<?php echo number_format($venta['total'], 2, ',', '.'); ?></p>
-            <p style="font-size: 11px;">Pago: <?php echo $venta['metodo_pago']; ?></p>
+            
+            <?php if($venta['metodo_pago'] === 'Mixto'): ?>
+                <div style="font-size: 11px; margin-top: 5px;">
+                    <p class="negrita">Pagos:</p>
+                    <?php foreach($pagos_mixtos as $pm): ?>
+                        <p><?php echo $pm['metodo_pago']; ?>: $<?php echo number_format($pm['monto'], 2, ',', '.'); ?></p>
+                    <?php endforeach; ?>
+                </div>
+            <?php else: ?>
+                <p style="font-size: 11px;">Pago: <?php echo $venta['metodo_pago']; ?></p>
+            <?php endif; ?>
         </div>
         
         <div class="linea"></div>

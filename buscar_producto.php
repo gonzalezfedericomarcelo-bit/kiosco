@@ -1,32 +1,20 @@
 <?php
-// acciones/buscar_producto.php - VERSIÓN PREDICTIVA TOTAL
+// acciones/buscar_producto.php
 require_once '../includes/db.php';
 
 $term = $_GET['term'] ?? '';
 
-// Si no hay término, no devolvemos nada
-if(strlen($term) < 1) {
-    echo json_encode(['status' => 'error']);
-    exit;
-}
+if(strlen($term) > 0) {
+    // Busca por nombre o codigo de barras
+    $stmt = $conexion->prepare("SELECT * FROM productos WHERE (descripcion LIKE ? OR codigo_barras LIKE ?) AND activo = 1 LIMIT 10");
+    $stmt->execute(["%$term%", "%$term%"]);
+    $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// BÚSQUEDA HÍBRIDA:
-// 1. Buscamos coincidencias parciales en NOMBRE o CÓDIGO (LIKE)
-// 2. Limitamos a 10 para no saturar la lista
-$sql = "SELECT id, descripcion, precio_venta, stock_actual, codigo_barras 
-        FROM productos 
-        WHERE (descripcion LIKE :term OR codigo_barras LIKE :term) 
-        AND activo = 1 
-        ORDER BY descripcion ASC 
-        LIMIT 10";
-
-$stmt = $conexion->prepare($sql);
-$stmt->execute([':term' => "%$term%"]);
-$productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
-if($productos) {
-    // Si encontramos algo, devolvemos la lista completa
-    echo json_encode(['status' => 'success', 'data' => $productos]);
+    if($productos) {
+        echo json_encode(['status' => 'success', 'data' => $productos]);
+    } else {
+        echo json_encode(['status' => 'error']);
+    }
 } else {
     echo json_encode(['status' => 'error']);
 }

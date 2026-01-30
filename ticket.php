@@ -8,7 +8,7 @@ if (!isset($_SESSION['usuario_id'])) { die("Acceso denegado"); }
 $id_venta = $_GET['id'] ?? 0;
 
 // 1. DATOS VENTA
-$stmt = $conexion->prepare("SELECT v.*, u.usuario, c.nombre as cliente, c.dni 
+$stmt = $conexion->prepare("SELECT v.*, u.usuario, c.nombre as cliente, c.dni_cuit as dni
                             FROM ventas v 
                             JOIN usuarios u ON v.id_usuario = u.id 
                             JOIN clientes c ON v.id_cliente = c.id 
@@ -145,6 +145,11 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
             <?php else: ?>
                 <p style="font-size: 11px;">Pago: <?php echo $venta['metodo_pago']; ?></p>
             <?php endif; ?>
+            <div class="linea"></div>
+        <div class="centrado" style="margin-top:10px;">
+            <p style="font-size:10px; margin-bottom:5px;">¡Escaneá y sumá puntos!</p>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://<?php echo $_SERVER['HTTP_HOST']; ?>/kiosco/registro_cliente.php" alt="QR Registro" style="width:80px; height:80px;">
+        </div>
         </div>
         
         <div class="linea"></div>

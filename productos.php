@@ -1,17 +1,38 @@
 <?php
-// productos.php - CON SEMÁFORO REAL Y CÁLCULO DE GANANCIA
+// productos.php - CON AUDITORÍA AGREGADA (Diseño Original Intacto)
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
-// PROCESAR ALTA RÁPIDA (Mantengo tu lógica original)
+// PROCESAR ALTA RÁPIDA
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, precio_costo, precio_venta, stock_actual, activo) VALUES (?, ?, ?, ?, ?, ?, 1)";
     $conexion->prepare($sql)->execute([$_POST['codigo'], $_POST['descripcion'], $_POST['categoria'], $_POST['precio_costo'], $_POST['precio_venta'], $_POST['stock']]);
+    
+    // AUDITORÍA ALTA RÁPIDA
+    $id_nuevo = $conexion->lastInsertId();
+    $detalles = "Alta Rápida: " . $_POST['descripcion'] . " (Stock: " . $_POST['stock'] . ")";
+    $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (NOW(), ?, 'ALTA_PRODUCTO', ?)")->execute([$_SESSION['usuario_id'], $detalles]);
+    
     header("Location: productos.php"); exit;
 }
+
+// PROCESAR BAJA (CON AUDITORÍA)
 if (isset($_GET['borrar'])) {
-    $conexion->query("UPDATE productos SET activo=0 WHERE id=" . $_GET['borrar']);
+    $id_borrar = $_GET['borrar'];
+    
+    // 1. Obtener datos antes de borrar para el reporte
+    $stmt = $conexion->prepare("SELECT descripcion, codigo_barras FROM productos WHERE id = ?");
+    $stmt->execute([$id_borrar]);
+    $prod = $stmt->fetch(PDO::FETCH_ASSOC);
+    
+    if($prod) {
+        $detalles = "Eliminado: " . $prod['descripcion'] . " (Cod: " . $prod['codigo_barras'] . ")";
+        $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (NOW(), ?, 'ELIMINAR_PRODUCTO', ?)")->execute([$_SESSION['usuario_id'], $detalles]);
+    }
+
+    // 2. Borrar (Baja lógica)
+    $conexion->query("UPDATE productos SET activo=0 WHERE id=" . $id_borrar);
     header("Location: productos.php"); exit;
 }
 
@@ -95,7 +116,7 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30;
                             $hoy = date('Y-m-d');
 
                             foreach($productos as $p): 
-                                // 1. LÓGICA DE ALERTA DE VENCIMIENTO (Original tuya)
+                                // 1. LÓGICA DE ALERTA DE VENCIMIENTO
                                 $dias_aviso = ($p->dias_alerta > 0) ? $p->dias_alerta : $dias_global;
                                 $fecha_alerta = date('Y-m-d', strtotime("+$dias_aviso days"));
                                 
@@ -115,19 +136,15 @@ $dias_global = $config_db->dias_alerta_vencimiento ?? 30;
                                 $ganancia = $venta - $costo;
                                 $margen = ($costo > 0) ? ($ganancia / $costo) * 100 : 100;
 
-                                // 3. LÓGICA SEMÁFORO DE STOCK (Nueva)
+                                // 3. LÓGICA SEMÁFORO DE STOCK
                                 $stk = floatval($p->stock_actual);
                                 $min = floatval($p->stock_minimo);
                                 
-                                // Definimos color y mensaje según stock
                                 if($stk <= $min) {
-                                    // ROJO: Crítico
                                     $badgeStock = '<span class="badge bg-danger shadow-sm"><i class="bi bi-x-circle-fill"></i> '.$stk.' u.</span>';
                                 } elseif($stk <= ($min * 2)) {
-                                    // AMARILLO: Advertencia (Menos del doble del mínimo)
                                     $badgeStock = '<span class="badge bg-warning text-dark shadow-sm"><i class="bi bi-exclamation-triangle-fill"></i> '.$stk.' u.</span>';
                                 } else {
-                                    // VERDE: OK
                                     $badgeStock = '<span class="badge bg-success shadow-sm"><i class="bi bi-check-circle-fill"></i> '.$stk.' u.</span>';
                                 }
                             ?>

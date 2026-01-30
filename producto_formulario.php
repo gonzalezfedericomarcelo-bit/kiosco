@@ -1,5 +1,5 @@
 <?php
-// producto_formulario.php - CON ALERTA PERSONALIZADA
+// producto_formulario.php - CON AUDITORÍA (Diseño Original Intacto)
 session_start();
 require_once 'includes/db.php';
 
@@ -37,7 +37,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     
     // Fechas y Alertas
     $vencimiento = !empty($_POST['fecha_vencimiento']) ? $_POST['fecha_vencimiento'] : null;
-    $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : null; // Si está vacío, es NULL (usa global)
+    $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : null;
     
     // Checkboxes
     $web = isset($_POST['es_destacado_web']) ? 1 : 0;
@@ -46,14 +46,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     try {
         if ($id) {
-            // AUDITORÍA
-            if($producto->stock_actual != $stock) {
-                $auditoria = $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, ?, ?, NOW())");
-                $detalles = "Cambio de Stock: De {$producto->stock_actual} a {$stock}. Producto: {$desc}";
-                $auditoria->execute([$_SESSION['usuario_id'], 'AJUSTE_STOCK', $detalles]);
+            // --- AUDITORÍA DE EDICIÓN ---
+            // Solo registramos si hubo cambios importantes (Precio o Stock)
+            $cambios = [];
+            if($producto->precio_venta != $venta) $cambios[] = "Precio: \${$producto->precio_venta} -> \$$venta";
+            if($producto->stock_actual != $stock) $cambios[] = "Stock: {$producto->stock_actual} -> $stock";
+            
+            if (!empty($cambios)) {
+                $detalles = "Modificación Producto '{$desc}': " . implode(", ", $cambios);
+                $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'MODIF_PRODUCTO', ?, NOW())")
+                         ->execute([$_SESSION['usuario_id'], $detalles]);
             }
+            // ----------------------------
 
-            // ACTUALIZAR (Incluye dias_alerta)
+            // ACTUALIZAR
             $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, 
                     precio_costo=?, precio_venta=?, stock_actual=?, stock_minimo=?, imagen_url=?, 
                     fecha_vencimiento=?, dias_alerta=?, es_destacado_web=?, es_apto_celiaco=?, es_apto_vegano=? WHERE id=?";
@@ -67,6 +73,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conexion->prepare($sql);
             $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano]);
+            
+            // --- AUDITORÍA DE ALTA ---
+            $nuevo_id = $conexion->lastInsertId();
+            $detalles = "Alta Completa: $desc (ID: $nuevo_id) | Stock: $stock";
+            $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'ALTA_PRODUCTO', ?, NOW())")
+                     ->execute([$_SESSION['usuario_id'], $detalles]);
+            // -------------------------
         }
         
         $mensaje_exito = true;

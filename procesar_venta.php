@@ -1,5 +1,5 @@
 <?php
-// acciones/procesar_venta.php - VERSIÓN FINAL CORREGIDA (SESSION ID REAL)
+// acciones/procesar_venta.php - CON VALIDACIÓN DE STOCK Y AUDITORÍA
 session_start();
 require_once '../includes/db.php';
 header('Content-Type: application/json');
@@ -23,31 +23,70 @@ if(empty($items)) { echo json_encode(['status'=>'error', 'msg'=>'Carrito vacío'
 try {
     $conexion->beginTransaction();
 
-    // 1. OBTENER ID CAJA ACTUAL (ESTO VA PRIMERO)
+    // 1. OBTENER ID CAJA ACTUAL
     $stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
     $stmtCaja->execute([$user_id]);
     $caja = $stmtCaja->fetch(PDO::FETCH_ASSOC);
     
     if(!$caja) { 
-        echo json_encode(['status'=>'error', 'msg'=>'No hay caja abierta. Por favor abrí caja primero.']); 
-        exit; 
+        throw new Exception("No hay caja abierta. Por favor abrí caja primero."); 
     }
     $id_caja_sesion = $caja['id'];
 
-    // 2. CONFIGURACIÓN Y FECHA
+    // ---------------------------------------------------------
+    // 2. VALIDACIÓN DE STOCK (NUEVO BLINDAJE)
+    // ---------------------------------------------------------
+    foreach($items as $item) {
+        // Consultamos stock actual y si es combo
+        $stmtProd = $conexion->prepare("SELECT descripcion, stock_actual, tipo FROM productos WHERE id = ?");
+        $stmtProd->execute([$item['id']]);
+        $prodDB = $stmtProd->fetch(PDO::FETCH_ASSOC);
+
+        if (!$prodDB) throw new Exception("El producto ID {$item['id']} no existe.");
+
+        $cantidad_venta = $item['cantidad'];
+
+        if ($prodDB['tipo'] === 'combo') {
+            // Si es combo, verificamos el stock de CADA hijo
+            $stmtHijos = $conexion->prepare("
+                SELECT p.descripcion, p.stock_actual, pc.cantidad as cant_hijo 
+                FROM productos_combo pc 
+                JOIN productos p ON pc.id_producto_hijo = p.id 
+                WHERE pc.id_combo = ?
+            ");
+            $stmtHijos->execute([$item['id']]);
+            $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($hijos as $hijo) {
+                $stock_necesario = $hijo['cant_hijo'] * $cantidad_venta;
+                if ($hijo['stock_actual'] < $stock_necesario) {
+                    throw new Exception("Stock insuficiente para el componente '{$hijo['descripcion']}' del combo '{$prodDB['descripcion']}'. (Tienes {$hijo['stock_actual']}, necesitas $stock_necesario)");
+                }
+            }
+        } elseif ($prodDB['tipo'] !== 'pesable') { 
+            // Si es unitario (no pesable), validamos directo
+            // (Los pesables a veces permiten decimales raros, pero idealmente también se validan)
+            if ($prodDB['stock_actual'] < $cantidad_venta) {
+                throw new Exception("Stock insuficiente para '{$prodDB['descripcion']}'. (Tienes ".floatval($prodDB['stock_actual']).", intentas vender $cantidad_venta)");
+            }
+        }
+    }
+    // ---------------------------------------------------------
+
+    // 3. CONFIGURACIÓN Y FECHA
     $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
     $ratio_puntos = $conf['dinero_por_punto'] ?? 100; 
     if($ratio_puntos <= 0) $ratio_puntos = 100; 
     $fecha_actual = date('Y-m-d H:i:s');
 
-    // 3. INSERTAR VENTA
+    // 4. INSERTAR VENTA
     $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, descuento_monto_cupon, descuento_manual, codigo_cupon) VALUES (?, ?, ?, ?, ?, ?, 'completada', ?, ?, ?)";
     $stmt = $conexion->prepare($sql);
     $stmt->execute([$id_caja_sesion, $user_id, $id_cliente, $total, $metodo, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
     
     $venta_id = $conexion->lastInsertId();
 
-    // 4. DETALLES Y STOCK
+    // 5. DETALLES Y DESCUENTO DE STOCK REAL
     foreach($items as $item) {
         $stmtDetalle = $conexion->prepare("INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_historico, subtotal) VALUES (?, ?, ?, ?, ?)");
         $subtotal = $item['precio'] * $item['cantidad'];
@@ -70,7 +109,7 @@ try {
         }
     }
 
-    // 5. SI ES PAGO MIXTO, GUARDAR EL DESGLOSE
+    // 6. SI ES PAGO MIXTO, GUARDAR EL DESGLOSE
     if($metodo === 'Mixto' && is_array($pagos_mixtos)) {
         $stmtMix = $conexion->prepare("INSERT INTO pagos_ventas (id_venta, metodo_pago, monto) VALUES (?, ?, ?)");
         foreach($pagos_mixtos as $metodo_nombre => $monto) {
@@ -80,7 +119,7 @@ try {
         }
     }
 
-    // 6. FIADO, PUNTOS Y SALDO A FAVOR
+    // 7. FIADO, PUNTOS Y SALDO A FAVOR
     if ($id_cliente > 1) { 
         // Fiado
         if ($metodo === 'CtaCorriente') {
@@ -102,7 +141,7 @@ try {
             $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor - ? WHERE id = ?")->execute([$saldo_favor_usado, $id_cliente]);
         }
 
-        // 7. REGISTRAR PAGO DE DEUDA
+        // 8. REGISTRAR PAGO DE DEUDA
         if ($pago_deuda > 0) {
             $concepto = "Cobro Deuda en Ticket #" . $venta_id;
             $stmtDeuda = $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, concepto, fecha) VALUES (?, ?, ?, 'haber', ?, ?, ?)");
@@ -113,6 +152,16 @@ try {
         }
     }
     
+    // ---------------------------------------------------------
+    // 9. AUDITORÍA FORENSE (REGISTRO DE LA VENTA)
+    // ---------------------------------------------------------
+    $detalles_audit = "Venta #$venta_id | Total: $$total | Metodo: $metodo";
+    if($desc_manual_monto > 0) $detalles_audit .= " | Desc.Manual: $$desc_manual_monto";
+    
+    $stmtAudit = $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (?, ?, 'Nueva Venta', ?)");
+    $stmtAudit->execute([$fecha_actual, $user_id, $detalles_audit]);
+    // ---------------------------------------------------------
+
     $conexion->commit();
     echo json_encode(['status' => 'success', 'id_venta' => $venta_id]);
 

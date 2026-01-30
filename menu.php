@@ -131,17 +131,7 @@ $pagina = basename($_SERVER['PHP_SELF']);
                         <i class="bi bi-gear-fill"></i> Admin
                     </a>
                     <ul class="dropdown-menu shadow">
-                        <li class="nav-item dropdown">
-    <a class="nav-link dropdown-toggle text-dark fw-bold" href="#" data-bs-toggle="dropdown">
-        <i class="bi bi-bar-chart-line-fill text-primary"></i> Reportes
-    </a>
-    <ul class="dropdown-menu shadow">
-        <li><a class="dropdown-item" href="reportes.php"><i class="bi bi-file-earmark-bar-graph"></i> Ventas Generales</a></li>
-        <li><a class="dropdown-item" href="historial_cajas.php"><i class="bi bi-clock-history text-danger"></i> Historial de Cajas (Turnos)</a></li> <li><hr class="dropdown-divider"></li>
-        <li><a class="dropdown-item" href="auditoria.php">Auditoría de Seguridad</a></li>
-    </ul>
-</li>
-                        
+                        <li><a class="dropdown-item" href="reportes.php"><i class="bi bi-bar-chart-fill text-primary"></i> Reportes</a></li>
                         <li><a class="dropdown-item" href="configuracion.php"><i class="bi bi-sliders text-dark"></i> Configuración</a></li>
                         <li><a class="dropdown-item" href="usuarios.php"><i class="bi bi-shield-lock text-secondary"></i> Usuarios y Roles</a></li>
                         <li><a class="dropdown-item" href="auditoria.php"><i class="bi bi-eye text-danger"></i> Auditoría</a></li>

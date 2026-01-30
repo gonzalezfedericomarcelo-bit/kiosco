@@ -1,8 +1,8 @@
 <?php
-// menu.php - REESTRUCTURADO Y AGRUPADO POR MÓDULOS
+// menu.php - ACTUALIZADO CON ACCESOS A REVISTA Y TIENDA
 if (session_status() === PHP_SESSION_NONE) session_start();
 
-// 1. Conexión y Configuración (Lógica Original Intacta)
+// 1. Conexión y Configuración
 $rutas_db = [__DIR__ . '/db.php', __DIR__ . '/includes/db.php', 'db.php', '../db.php']; 
 foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; break; } }
 
@@ -38,8 +38,7 @@ $pagina = basename($_SERVER['PHP_SELF']);
     .nav-link.active { font-weight: bold; background: rgba(255,255,255,0.2); border-radius: 6px; color: white !important; }
     .logo-menu { max-height: 40px; margin-right: 10px; }
     
-    /* Ajustes para los Dropdowns */
-    .dropdown-menu { border: none; shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); border-radius: 10px; }
+    .dropdown-menu { border: none; box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15); border-radius: 10px; }
     .dropdown-item { padding: 8px 20px; font-size: 0.9rem; }
     .dropdown-item:active { background-color: <?php echo $color_nav; ?>; }
     .dropdown-item i { margin-right: 8px; opacity: 0.7; }
@@ -77,7 +76,7 @@ $pagina = basename($_SERVER['PHP_SELF']);
                     <ul class="dropdown-menu shadow">
                         <li><a class="dropdown-item" href="ventas.php"><i class="bi bi-cart4 text-success"></i> Nueva Venta</a></li>
                         <li><a class="dropdown-item" href="cierre_caja.php"><i class="bi bi-calculator text-primary"></i> Cerrar Caja</a></li>
-                        <?php if($rol <= 2): // Solo dueños ven devoluciones ?>
+                        <?php if($rol <= 2): ?>
                             <li><hr class="dropdown-divider"></li>
                             <li><a class="dropdown-item" href="devoluciones.php"><i class="bi bi-arrow-counterclockwise text-danger"></i> Devoluciones</a></li>
                         <?php endif; ?>
@@ -112,17 +111,18 @@ $pagina = basename($_SERVER['PHP_SELF']);
 
                 <?php if($rol <= 2): ?>
                 <li class="nav-item dropdown">
-                    <a class="nav-link dropdown-toggle <?php echo in_array($pagina, ['gastos.php','mermas.php','precios_masivos.php','gestionar_cupones.php'])?'active':'';?>" href="#" role="button" data-bs-toggle="dropdown">
+                    <a class="nav-link dropdown-toggle <?php echo in_array($pagina, ['gastos.php','mermas.php','precios_masivos.php','gestionar_cupones.php', 'admin_revista.php'])?'active':'';?>" href="#" role="button" data-bs-toggle="dropdown">
                         <i class="bi bi-wallet2"></i> Finanzas
                     </a>
                     <ul class="dropdown-menu shadow">
                         <li><a class="dropdown-item" href="gastos.php"><i class="bi bi-wallet2 text-danger"></i> Gastos y Retiros</a></li>
                         <li><a class="dropdown-item" href="mermas.php"><i class="bi bi-trash3 text-secondary"></i> Mermas y Roturas</a></li>
-                        <li><a class="dropdown-item" href="activos.php"><i class="bi bi-pc-display-horizontal text-primary"></i> Activos (Bienes de Uso)</a></li>
+                        <li><a class="dropdown-item" href="precios_masivos.php"><i class="bi bi-graph-up-arrow text-warning"></i> Aumentos Masivos</a></li>
                         <li><a class="dropdown-item" href="gestionar_cupones.php"><i class="bi bi-ticket-perforated text-success"></i> Cupones de Descuento</a></li>
                         
                         <li><hr class="dropdown-divider"></li>
-                        <li><a class="dropdown-item" href="precios_masivos.php"><i class="bi bi-graph-up-arrow text-warning"></i> Aumentos Masivos</a></li>
+                        <li><a class="dropdown-item fw-bold" href="admin_revista.php"><i class="bi bi-newspaper text-danger"></i> Armar Revista Digital</a></li>
+                        <li><a class="dropdown-item" href="tienda.php" target="_blank"><i class="bi bi-shop text-primary"></i> Ver Tienda Online</a></li>
                     </ul>
                 </li>
 

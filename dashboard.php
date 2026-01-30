@@ -1,5 +1,5 @@
 <?php
-// dashboard.php - VERSIÓN RESPONSIVA
+// dashboard.php - VERSIÓN CON BOTÓN MARKETING
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -67,6 +67,14 @@ $nombre_usuario = $_SESSION['nombre'] ?? 'Usuario';
             </div>
 
             <div class="col-12 col-md-6 col-lg-4">
+                <a href="admin_revista.php" class="card card-menu h-100 p-4 text-center border-danger">
+                    <i class="bi bi-newspaper icon-large text-danger"></i>
+                    <h3 class="fw-bold text-danger">Marketing Digital</h3>
+                    <p class="text-muted mb-0">Armar Revista y Ofertas</p>
+                </a>
+            </div>
+
+            <div class="col-12 col-md-6 col-lg-4">
                 <a href="configuracion.php" class="card card-menu h-100 p-4 text-center">
                     <i class="bi bi-gear-fill icon-large text-secondary"></i>
                     <h3 class="fw-bold text-dark">Configuración</h3>
@@ -74,14 +82,6 @@ $nombre_usuario = $_SESSION['nombre'] ?? 'Usuario';
                 </a>
             </div>
             <?php endif; ?>
-
-            <div class="col-12 col-md-6 col-lg-4">
-                <a href="perfil.php" class="card card-menu h-100 p-4 text-center">
-                    <i class="bi bi-person-circle icon-large text-dark"></i>
-                    <h3 class="fw-bold text-dark">Mi Perfil</h3>
-                    <p class="text-muted mb-0">Firma y Clave</p>
-                </a>
-            </div>
 
         </div>
     </div>

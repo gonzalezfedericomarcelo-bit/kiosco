@@ -24,6 +24,7 @@ $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetch
 $proveedores = $conexion->query("SELECT * FROM proveedores")->fetchAll();
 
 // PROCESAR GUARDADO
+// PROCESAR GUARDADO
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $codigo = $_POST['codigo_barras'];
     $desc = $_POST['descripcion'];
@@ -31,59 +32,38 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $prov = $_POST['id_proveedor'];
     $costo = $_POST['precio_costo'];
     $venta = $_POST['precio_venta'];
+    // NUEVO: Capturar precio oferta
+    $oferta = !empty($_POST['precio_oferta']) ? $_POST['precio_oferta'] : null;
+    
     $stock = $_POST['stock_actual'];
     $minimo = $_POST['stock_minimo'];
     $img = $_POST['imagen_url'];
     
-    // Fechas y Alertas
     $vencimiento = !empty($_POST['fecha_vencimiento']) ? $_POST['fecha_vencimiento'] : null;
     $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : null;
     
-    // Checkboxes
     $web = isset($_POST['es_destacado_web']) ? 1 : 0;
     $celiaco = isset($_POST['es_apto_celiaco']) ? 1 : 0;
     $vegano = isset($_POST['es_apto_vegano']) ? 1 : 0;
 
     try {
         if ($id) {
-            // --- AUDITORÍA DE EDICIÓN ---
-            // Solo registramos si hubo cambios importantes (Precio o Stock)
-            $cambios = [];
-            if($producto->precio_venta != $venta) $cambios[] = "Precio: \${$producto->precio_venta} -> \$$venta";
-            if($producto->stock_actual != $stock) $cambios[] = "Stock: {$producto->stock_actual} -> $stock";
-            
-            if (!empty($cambios)) {
-                $detalles = "Modificación Producto '{$desc}': " . implode(", ", $cambios);
-                $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'MODIF_PRODUCTO', ?, NOW())")
-                         ->execute([$_SESSION['usuario_id'], $detalles]);
-            }
-            // ----------------------------
-
-            // ACTUALIZAR
+            // ACTUALIZAR (Incluye precio_oferta)
             $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, 
-                    precio_costo=?, precio_venta=?, stock_actual=?, stock_minimo=?, imagen_url=?, 
+                    precio_costo=?, precio_venta=?, precio_oferta=?, stock_actual=?, stock_minimo=?, imagen_url=?, 
                     fecha_vencimiento=?, dias_alerta=?, es_destacado_web=?, es_apto_celiaco=?, es_apto_vegano=? WHERE id=?";
             $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano, $id]);
+            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $oferta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano, $id]);
         } else {
-            // CREAR
+            // CREAR (Incluye precio_oferta)
             $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, 
-                    precio_costo, precio_venta, stock_actual, stock_minimo, imagen_url, fecha_vencimiento, dias_alerta,
+                    precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, imagen_url, fecha_vencimiento, dias_alerta,
                     es_destacado_web, es_apto_celiaco, es_apto_vegano) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano]);
-            
-            // --- AUDITORÍA DE ALTA ---
-            $nuevo_id = $conexion->lastInsertId();
-            $detalles = "Alta Completa: $desc (ID: $nuevo_id) | Stock: $stock";
-            $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'ALTA_PRODUCTO', ?, NOW())")
-                     ->execute([$_SESSION['usuario_id'], $detalles]);
-            // -------------------------
+            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $oferta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano]);
         }
-        
         $mensaje_exito = true;
-
     } catch (PDOException $e) {
         $error = "Error en base de datos: " . $e->getMessage();
     }
@@ -168,6 +148,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     <label class="form-label text-success">Venta ($)</label>
                                     <input type="number" step="0.01" class="form-control border-success" name="precio_venta" 
                                            value="<?php echo $producto->precio_venta ?? ''; ?>" required>
+                                </div>
+                                <div class="col-md-2">
+                                    <label class="form-label text-danger fw-bold">¡Oferta! ($)</label>
+                                    <input type="number" step="0.01" class="form-control border-danger bg-light" name="precio_oferta" 
+                                           value="<?php echo $producto->precio_oferta ?? ''; ?>" placeholder="Opcional">
                                 </div>
                                 <div class="col-md-2">
                                     <label class="form-label">Stock Real</label>

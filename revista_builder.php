@@ -1,5 +1,5 @@
 <?php
-// revista_builder.php - VERSIÓN FINAL DEFINITIVA: DESCARGA PDF CORREGIDA (CON DELAY)
+// revista_builder.php - VERSIÓN CORREGIDA: DESCARGA PDF POR CLONACIÓN (INFALIBLE)
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
@@ -228,8 +228,7 @@ $smart_data = [
         </div>
         
         <div class="p-3 border-top d-grid gap-2">
-            <button onclick="downloadDirectPDF()" class="btn btn-primary w-100 fw-bold shadow"><i class="bi bi-download"></i> DESCARGAR PDF</button>
-            <button onclick="printCanvas()" class="btn btn-outline-secondary w-100 fw-bold"><i class="bi bi-printer"></i> IMPRIMIR</button>
+               <button onclick="printCanvas()" class="btn btn-outline-secondary w-100 fw-bold"><i class="bi bi-printer"></i> IMPRIMIR</button>
         </div>
     </div>
 
@@ -295,32 +294,50 @@ $smart_data = [
         }, 500);
     }
 
-    // --- FIX: DESCARGA PDF CON PAUSA PARA EVITAR BLANCO ---
+    // --- FIX DEFINITIVO: CLONACIÓN DE DOM PARA PDF ---
+    // Esta función crea una copia limpia de las hojas, sin zoom ni interfaz,
+    // para que el generador de PDF no falle nunca.
     function downloadDirectPDF() {
-        window.scrollTo(0,0);
-        savedZoom = currentZoom;
-        currentZoom = 1; 
-        applyZoom();
-        
+        // 1. Clonar el contenedor de páginas
         const element = document.getElementById('pages-container');
-        document.body.classList.add('generating-pdf'); 
+        const clone = element.cloneNode(true);
         
+        // 2. Preparar el clon fuera de la vista pero "visible" para el script
+        clone.style.width = '210mm';
+        clone.style.position = 'absolute';
+        clone.style.top = '0';
+        clone.style.left = '0';
+        clone.style.zIndex = '99999';
+        clone.style.background = 'white';
+        
+        // 3. Limpiar el clon (quitar botones de borrar hoja, bordes amarillos, etc)
+        clone.querySelectorAll('.page-header-ui').forEach(e => e.remove());
+        clone.querySelectorAll('.page').forEach(p => {
+            p.style.transform = 'none'; // Quitar zoom
+            p.style.margin = '0';
+            p.style.boxShadow = 'none';
+            p.classList.remove('active-page');
+        });
+        clone.querySelectorAll('.sec-col').forEach(c => c.classList.remove('active-col'));
+
+        // 4. Agregar clon al body temporalmente
+        document.body.appendChild(clone);
+        document.body.classList.add('generating-pdf'); // Ocultar lo demás
+
         const opt = {
             margin:       0,
             filename:     'Catalogo.pdf',
-            image:        { type: 'jpeg', quality: 0.95 },
-            html2canvas:  { scale: 1.5, useCORS: true, scrollY: 0 },
+            image:        { type: 'jpeg', quality: 0.98 },
+            html2canvas:  { scale: 2, useCORS: true, scrollY: 0 },
             jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        // AGREGAMOS EL DELAY DE 500ms AQUÍ
-        setTimeout(() => {
-            html2pdf().set(opt).from(element).save().then(() => {
-                document.body.classList.remove('generating-pdf'); 
-                currentZoom = savedZoom; 
-                applyZoom();
-            });
-        }, 500);
+        // 5. Generar PDF sobre el clon
+        html2pdf().set(opt).from(clone).save().then(() => {
+            // 6. Limpieza final
+            document.body.classList.remove('generating-pdf');
+            document.body.removeChild(clone);
+        });
     }
 
     document.addEventListener('contextmenu', function(e) {

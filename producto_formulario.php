@@ -1,5 +1,5 @@
 <?php
-// producto_formulario.php - CON CAMPO OFERTA RESTAURADO
+// producto_formulario.php - CON ETIQUETAS DE SALUD (VEGANO/SIN TACC)
 session_start();
 require_once 'includes/db.php';
 
@@ -28,12 +28,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $costo = $_POST['precio_costo'];
     $venta = $_POST['precio_venta'];
     
-    // RECUPERAMOS EL PRECIO OFERTA (Si está vacío lo pasamos a NULL)
+    // RECUPERAMOS EL PRECIO OFERTA
     $oferta = !empty($_POST['precio_oferta']) ? $_POST['precio_oferta'] : NULL;
     
     $stock = $_POST['stock_actual'];
     $minimo = $_POST['stock_minimo'];
     $es_combo = (isset($_POST['tipo']) && $_POST['tipo'] == 'combo') ? 'combo' : 'unitario';
+    
+    // --- NUEVO: ETIQUETAS DE SALUD ---
+    $es_vegano = isset($_POST['es_vegano']) ? 1 : 0;
+    $es_celiaco = isset($_POST['es_celiaco']) ? 1 : 0; // Sin TACC
     
     // MANEJO DE IMAGEN
     $imagen_final = $_POST['imagen_actual'] ?? 'default.jpg';
@@ -45,10 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $data = base64_decode($image_array_2[1]);
         
         $nombre_img = 'prod_' . time() . '_' . rand(100,999) . '.png';
-        
-        // Crear carpeta si no existe
         if (!is_dir('uploads')) mkdir('uploads', 0777, true);
-        
         $ruta_destino = 'uploads/' . $nombre_img;
         
         if(file_put_contents($ruta_destino, $data)) {
@@ -60,13 +61,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 
     if ($id) {
-        // ACTUALIZAR (Incluyendo precio_oferta)
-        $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, precio_costo=?, precio_venta=?, precio_oferta=?, stock_actual=?, stock_minimo=?, tipo=?, imagen_url=? WHERE id=?";
-        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $id]);
+        // ACTUALIZAR (Agregamos es_vegano y es_celiaco)
+        $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, precio_costo=?, precio_venta=?, precio_oferta=?, stock_actual=?, stock_minimo=?, tipo=?, imagen_url=?, es_vegano=?, es_celiaco=? WHERE id=?";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco, $id]);
     } else {
-        // CREAR (Incluyendo precio_oferta)
-        $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, tipo, imagen_url, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
-        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final]);
+        // CREAR (Agregamos es_vegano y es_celiaco)
+        $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, tipo, imagen_url, activo, es_vegano, es_celiaco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco]);
     }
     
     header("Location: productos.php"); exit;
@@ -84,6 +85,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         .img-container { max-height: 500px; display: block; }
         .preview-box { width: 200px; height: 200px; overflow: hidden; border: 2px dashed #ccc; margin: 0 auto; background: #f8f9fa; display: flex; align-items: center; justify-content: center; }
         .preview-img { max-width: 100%; max-height: 100%; }
+        /* Estilo Checkboxes Salud */
+        .check-card { border: 1px solid #dee2e6; padding: 10px; border-radius: 8px; transition: 0.2s; cursor: pointer; }
+        .check-card:hover { background: #f8f9fa; }
+        .form-check-input:checked + .form-check-label { font-weight: bold; color: #198754; }
     </style>
 </head>
 <body class="bg-light">
@@ -155,6 +160,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </select>
                                 </div>
 
+                                <div class="col-12 mt-3">
+                                    <label class="form-label fw-bold text-success"><i class="bi bi-heart-pulse"></i> Etiquetas de Salud</label>
+                                    <div class="d-flex gap-3">
+                                        <div class="form-check check-card flex-fill">
+                                            <input class="form-check-input" type="checkbox" name="es_vegano" id="chk_vegano" value="1" <?php echo (!empty($producto['es_vegano']) && $producto['es_vegano']==1) ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="chk_vegano">🌱 Es Vegano</label>
+                                        </div>
+                                        <div class="form-check check-card flex-fill">
+                                            <input class="form-check-input" type="checkbox" name="es_celiaco" id="chk_celiaco" value="1" <?php echo (!empty($producto['es_celiaco']) && $producto['es_celiaco']==1) ? 'checked' : ''; ?>>
+                                            <label class="form-check-label" for="chk_celiaco">🌾 Sin TACC (Celíaco)</label>
+                                        </div>
+                                    </div>
+                                </div>
+
                                 <div class="col-12"><hr></div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold text-muted">Costo ($)</label>
@@ -167,7 +186,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold text-danger">⚠️ Oferta ($)</label>
                                     <input type="number" step="0.01" name="precio_oferta" class="form-control border-danger" placeholder="Opcional" value="<?php echo $producto['precio_oferta'] ?? ''; ?>">
-                                    <div class="form-text small text-danger">Si llenás esto, se cobra este precio.</div>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Stock Actual</label>

@@ -197,6 +197,16 @@ try {
                             <small>Detalle se confirmará al finalizar.</small>
                         </div>
 
+<div class="d-flex gap-2 mb-2">
+    <button type="button" class="btn btn-warning fw-bold flex-fill" onclick="suspenderVentaActual()">
+        <i class="bi bi-pause-circle"></i> ESPERA
+    </button>
+    <button type="button" class="btn btn-info fw-bold flex-fill text-white" onclick="abrirModalSuspendidas()">
+        <i class="bi bi-arrow-counterclockwise"></i> RECUPERAR
+    </button>
+</div>
+
+
                         <div class="d-grid gap-2 mt-auto">
                             <button id="btn-finalizar" class="btn btn-success btn-lg py-3 fw-bold shadow">
                                 <i class="bi bi-check-lg"></i> CONFIRMAR VENTA
@@ -650,5 +660,121 @@ try {
             });
         }
     </script>
+    <div class="modal fade" id="modalSuspendidas" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-warning">
+                <h5 class="modal-title fw-bold text-dark"><i class="bi bi-pause-circle-fill"></i> Ventas en Espera</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-0" id="listaSuspendidasBody"></div>
+        </div>
+    </div>
+</div>
+
+<script>
+function suspenderVentaActual() {
+    // Detectamos tu variable de carrito (probamos las 3 más comunes para asegurar)
+    let carritoData = [];
+    if(typeof productos !== 'undefined') carritoData = productos;
+    else if(typeof cart !== 'undefined') carritoData = cart;
+    else if(typeof carrito !== 'undefined') carritoData = carrito;
+
+    if (carritoData.length === 0) {
+        Swal.fire('Error', 'El carrito está vacío', 'warning'); return;
+    }
+
+    Swal.fire({
+        title: 'Dejar en Espera',
+        input: 'text',
+        inputPlaceholder: 'Nombre o Referencia (Ej: "Señora Rubia")',
+        showCancelButton: true,
+        confirmButtonColor: '#ffc107',
+        confirmButtonText: 'Suspender'
+    }).then((result) => {
+        if (result.isConfirmed) {
+            let ref = result.value || 'Sin Nombre';
+            let total = 0;
+            // Calculamos total compatible con tu estructura
+            carritoData.forEach(p => total += (parseFloat(p.precio) * parseFloat(p.cantidad)));
+
+            fetch('acciones/suspender_guardar.php', {
+                method: 'POST',
+                body: JSON.stringify({ carrito: carritoData, referencia: ref, total: total })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    // Vaciamos el carrito (compatible con tu sistema)
+                    if(typeof productos !== 'undefined') productos = [];
+                    if(typeof cart !== 'undefined') cart = [];
+                    if(typeof carrito !== 'undefined') carrito = [];
+                    
+                    // Intentamos actualizar la vista (buscamos tu función de renderizado común)
+                    if(typeof renderCarrito === 'function') renderCarrito();
+                    else if(typeof actualizarTabla === 'function') actualizarTabla();
+                    else if(typeof mostrarCarrito === 'function') mostrarCarrito();
+                    else location.reload(); // Si falla, recarga segura
+
+                    Swal.fire('Suspendida', 'La venta quedó en espera', 'success');
+                }
+            });
+        }
+    });
+}
+
+function abrirModalSuspendidas() {
+    let modal = new bootstrap.Modal(document.getElementById('modalSuspendidas'));
+    document.getElementById('listaSuspendidasBody').innerHTML = '<div class="p-4 text-center"><div class="spinner-border text-warning"></div></div>';
+    modal.show();
+
+    fetch('acciones/suspender_listar.php')
+        .then(r => r.text())
+        .then(html => {
+            document.getElementById('listaSuspendidasBody').innerHTML = html;
+        });
+}
+
+function recuperarVentaId(id) {
+    Swal.fire({
+        title: '¿Retomar esta venta?',
+        text: "Se cargará al carrito actual.",
+        icon: 'question',
+        showCancelButton: true,
+        confirmButtonText: 'Sí, Retomar'
+    }).then((r) => {
+        if(r.isConfirmed) {
+            fetch('acciones/suspender_recuperar.php?id=' + id)
+            .then(res => res.json())
+            .then(data => {
+                // Recuperamos items al carrito global
+                if(typeof productos === 'undefined' && typeof cart === 'undefined') window.productos = [];
+                let target = (typeof productos !== 'undefined') ? productos : cart;
+                
+                data.items.forEach(item => {
+                    target.push({
+                        id: parseInt(item.id),
+                        descripcion: item.nombre, // Ajuste compatible
+                        nombre: item.nombre,
+                        precio: parseFloat(item.precio),
+                        cantidad: parseInt(item.cantidad),
+                        codigo: item.codigo
+                    });
+                });
+                
+                // Actualizar vista
+                if(typeof renderCarrito === 'function') renderCarrito();
+                else if(typeof actualizarTabla === 'function') actualizarTabla();
+                else location.reload();
+
+                bootstrap.Modal.getInstance(document.getElementById('modalSuspendidas')).hide();
+                const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
+                Toast.fire({icon: 'success', title: 'Venta recuperada'});
+            });
+        }
+    });
+}
+</script>
+
 </body>
 </html>

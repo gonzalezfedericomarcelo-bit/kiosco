@@ -164,6 +164,11 @@ $productos = $conexion->query($sql)->fetchAll();
                 <h2 class="fw-bold text-dark m-0"><i class="bi bi-grid-fill text-primary"></i> Catálogo</h2>
                 <span class="text-muted small">Administración Visual de Productos</span>
             </div>
+            
+            <a href="combos.php" class="btn btn-warning text-dark rounded-pill px-4 py-2 fw-bold shadow-sm me-2">
+    <i class="bi bi-box-seam-fill me-1"></i> COMBOS
+</a>
+
             <a href="producto_formulario.php" class="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm">
                 <i class="bi bi-plus-lg me-1"></i> NUEVO PRODUCTO
             </a>

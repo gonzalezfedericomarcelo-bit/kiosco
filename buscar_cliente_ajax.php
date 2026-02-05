@@ -1,44 +1,54 @@
 <?php
-require_once '../includes/db.php';
+// buscar_cliente_ajax.php - BUSCADOR INTELIGENTE JSON
+// Devuelve resultados para el autocompletado en canje_puntos.php
+
+// 1. Conexión a prueba de fallos
+$rutas_db = [__DIR__ . '/db.php', __DIR__ . '/includes/db.php', 'db.php', '../db.php'];
+$conexion = null;
+foreach ($rutas_db as $ruta) {
+    if (file_exists($ruta)) {
+        require_once $ruta;
+        break;
+    }
+}
+
+if (!$conexion) {
+    echo json_encode([]);
+    exit;
+}
 
 $term = $_GET['term'] ?? '';
 
 if (strlen($term) > 0) {
-    // Buscamos clientes
-    $stmt = $conexion->prepare("SELECT * FROM clientes WHERE nombre LIKE ? OR dni LIKE ? LIMIT 10");
-    $stmt->execute(["%$term%", "%$term%"]);
+    $term = trim($term);
+    $like = "%$term%";
+    
+    // Buscamos por Nombre, DNI o CUIT
+    $stmt = $conexion->prepare("SELECT id, nombre, dni, dni_cuit, puntos_acumulados, saldo_favor, 
+                                (SELECT COALESCE(SUM(monto),0) FROM movimientos_cc WHERE id_cliente = clientes.id AND tipo = 'debe') - 
+                                (SELECT COALESCE(SUM(monto),0) FROM movimientos_cc WHERE id_cliente = clientes.id AND tipo = 'haber') as saldo_calculado
+                                FROM clientes 
+                                WHERE nombre LIKE ? OR dni LIKE ? OR dni_cuit LIKE ? 
+                                LIMIT 10");
+    $stmt->execute([$like, $like, $like]);
     $clientes = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    // Calculamos saldos (si existe la tabla)
+    // Formateamos para el frontend
     $resultados = [];
     foreach($clientes as $c) {
-        $saldo_deuda = 0;
-        $saldo_favor = 0;
-        
-        // Intentar calcular saldo real
-        try {
-            // Deuda
-            $stmtDeuda = $conexion->prepare("SELECT SUM(monto) FROM movimientos_cc WHERE id_cliente = ? AND tipo = 'debe'");
-            $stmtDeuda->execute([$c['id']]);
-            $deuda = $stmtDeuda->fetchColumn() ?: 0;
-
-            // Pagos/Favor
-            $stmtHaber = $conexion->prepare("SELECT SUM(monto) FROM movimientos_cc WHERE id_cliente = ? AND tipo = 'haber'");
-            $stmtHaber->execute([$c['id']]);
-            $haber = $stmtHaber->fetchColumn() ?: 0;
-
-            $balance = $deuda - $haber;
-            
-            if($balance > 0) $saldo_deuda = $balance;
-            if($balance < 0) $saldo_favor = abs($balance);
-
-        } catch (Exception $e) { }
-
-        $c['saldo_actual'] = $saldo_deuda;
-        $c['saldo_favor'] = $saldo_favor;
-        $resultados[] = $c;
+        $resultados[] = [
+            'id' => $c['id'],
+            'label' => $c['nombre'], // Para UI standard
+            'nombre' => $c['nombre'],
+            'dni' => $c['dni'] ?: $c['dni_cuit'] ?: 'S/DNI',
+            'puntos' => number_format($c['puntos_acumulados'], 0),
+            'saldo' => number_format($c['saldo_calculado'], 0)
+        ];
     }
     
+    header('Content-Type: application/json');
     echo json_encode($resultados);
+} else {
+    echo json_encode([]);
 }
 ?>

@@ -1,86 +1,77 @@
 <?php
-// canje_puntos.php - VERSIÓN FINAL AUTOMATIZADA
+// canje_puntos.php - TERMINAL DE FIDELIZACIÓN CON BÚSQUEDA PREDICTIVA
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
+// 1. CONEXIÓN
 $rutas_db = ['db.php', 'includes/db.php'];
 foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; break; } }
 
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
-$mensaje_sweet = ''; // Variable para disparar JS
-$cliente = null;
+$mensaje_sweet = '';
+$resultados_busqueda = [];
+$cliente_seleccionado = null;
 
-// BUSCAR CLIENTE
-if (isset($_GET['buscar_dni'])) {
-    $busqueda = trim($_GET['buscar_dni']);
-    // Busca en ambos campos
-    $sql = "SELECT * FROM clientes WHERE dni_cuit = ? OR dni = ?";
+// 2. LÓGICA DE BÚSQUEDA CLÁSICA (Fallback si da Enter)
+if (isset($_GET['q']) && !empty($_GET['q'])) {
+    $q = trim($_GET['q']);
+    $term = "%$q%";
+    $sql = "SELECT * FROM clientes WHERE nombre LIKE ? OR dni LIKE ? OR dni_cuit LIKE ? OR id = ? LIMIT 20";
     $stmt = $conexion->prepare($sql);
-    $stmt->execute([$busqueda, $busqueda]);
-    $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+    $stmt->execute([$term, $term, $term, $q]);
+    $resultados_busqueda = $stmt->fetchAll(PDO::FETCH_ASSOC);
     
-    if (!$cliente) {
-        $mensaje_sweet = "Swal.fire('Error', 'No se encontró el cliente', 'error');";
-    }
+    // NOTA: Eliminé la redirección automática (count == 1) para que siempre elijas tú.
 }
 
-// PROCESAR CANJE
-if (isset($_POST['canjear'])) {
+// 3. SELECCIÓN DE CLIENTE
+if (isset($_GET['id_cliente'])) {
+    $stmt = $conexion->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmt->execute([$_GET['id_cliente']]);
+    $cliente_seleccionado = $stmt->fetch(PDO::FETCH_ASSOC);
+}
+
+// 4. PROCESAR CANJE
+if (isset($_POST['canjear']) && $cliente_seleccionado) {
     $id_cliente = $_POST['id_cliente'];
     $id_premio = $_POST['id_premio'];
     
     try {
         $conexion->beginTransaction();
         
-        // Datos frescos del cliente
-        $stmtC = $conexion->prepare("SELECT puntos_acumulados, nombre FROM clientes WHERE id = ?");
+        $stmtC = $conexion->prepare("SELECT puntos_acumulados FROM clientes WHERE id = ?");
         $stmtC->execute([$id_cliente]);
-        $cliData = $stmtC->fetch(PDO::FETCH_ASSOC);
+        $pts_actuales = $stmtC->fetchColumn();
         
-        // Datos del premio
         $stmtP = $conexion->prepare("SELECT * FROM premios WHERE id = ?");
         $stmtP->execute([$id_premio]);
         $premio = $stmtP->fetch(PDO::FETCH_ASSOC);
         
-        if ($cliData['puntos_acumulados'] >= $premio['puntos_necesarios']) {
+        if ($pts_actuales >= $premio['puntos_necesarios']) {
+            $nuevo_saldo = $pts_actuales - $premio['puntos_necesarios'];
+            $conexion->prepare("UPDATE clientes SET puntos_acumulados = ? WHERE id = ?")->execute([$nuevo_saldo, $id_cliente]);
             
-            // 1. Restar Puntos
-            $nuevo_saldo_pts = $cliData['puntos_acumulados'] - $premio['puntos_necesarios'];
-            $conexion->prepare("UPDATE clientes SET puntos_acumulados = ? WHERE id = ?")
-                     ->execute([$nuevo_saldo_pts, $id_cliente]);
-            
-            // 2. Lógica según tipo de premio
             if ($premio['es_cupon'] == 1) {
-                // ES DINERO: Sumar al saldo a favor del cliente
                 $monto = $premio['monto_dinero'];
-                $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor + ? WHERE id = ?")
-                         ->execute([$monto, $id_cliente]);
-                         
-                $txt_final = "Se acreditaron $$monto a la cuenta del cliente para su próxima compra.";
+                $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor + ? WHERE id = ?")->execute([$monto, $id_cliente]);
+                $txt_log = "Canje Cupón $$monto";
             } else {
-                // ES PRODUCTO: Restar stock
-                $conexion->prepare("UPDATE premios SET stock = stock - 1 WHERE id = ?")
-                         ->execute([$id_premio]);
-                $txt_final = "Entregue el producto: " . $premio['nombre'];
+                $conexion->prepare("UPDATE premios SET stock = stock - 1 WHERE id = ?")->execute([$id_premio]);
+                $txt_log = "Canje Producto: " . $premio['nombre'];
             }
             
-            // 3. Auditoría
-            $detalle = "Canje: " . $premio['nombre'] . " (" . $premio['puntos_necesarios'] . " pts)";
+            $detalle = "$txt_log (-" . $premio['puntos_necesarios'] . " pts)";
             $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'CANJE', ?, NOW())")
                      ->execute([$_SESSION['usuario_id'], $detalle]);
             
             $conexion->commit();
-            
-            // Redirección con mensaje de éxito para SweetAlert
-            header("Location: canje_puntos.php?buscar_dni=".$_POST['dni_cliente']."&exito=1&txt=".urlencode($txt_final));
+            header("Location: canje_puntos.php?id_cliente=$id_cliente&exito=1&msg=".urlencode($txt_log));
             exit;
-            
         } else {
             throw new Exception("Puntos insuficientes.");
         }
-        
     } catch (Exception $e) {
         $conexion->rollBack();
         $mensaje_sweet = "Swal.fire('Error', '".$e->getMessage()."', 'error');";
@@ -93,137 +84,234 @@ $premios = $conexion->query("SELECT * FROM premios WHERE activo = 1 ORDER BY pun
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Canje de Puntos</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <style>
+        body { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; padding-bottom: 80px; }
+        
+        /* BUSCADOR PREDICTIVO */
+        .search-container { position: relative; }
+        .suggestions-list {
+            position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
+            background: white; border: 1px solid #ddd; border-radius: 0 0 15px 15px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; display: none;
+        }
+        .suggestion-item {
+            padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center;
+        }
+        .suggestion-item:hover { background-color: #f8f9fa; }
+        .suggestion-item:last-child { border-bottom: none; }
+        
+        /* TARJETA CLIENTE */
+        .client-card-header { background: linear-gradient(135deg, #198754 0%, #0f5132 100%); color: white; padding: 20px; border-radius: 15px 15px 0 0; }
+        .prize-card { transition: transform 0.2s; border: none; shadow: 0 2px 5px rgba(0,0,0,0.05); }
+        .prize-card:hover { transform: translateY(-3px); }
+        .prize-card.disabled { opacity: 0.5; filter: grayscale(1); }
+    </style>
 </head>
-<body class="bg-light">
+<body>
 
     <?php 
     if (file_exists('includes/menu.php')) include 'includes/menu.php';
     elseif (file_exists('menu.php')) include 'menu.php';
     ?>
 
-    <div class="container mt-4 pb-5">
-        <div class="d-flex justify-content-between align-items-center mb-4">
-            <h3 class="fw-bold text-success"><i class="bi bi-stars"></i> Canje de Premios</h3>
-            <a href="gestionar_premios.php" class="btn btn-dark btn-sm"><i class="bi bi-gear-fill"></i> Configurar Premios</a>
-        </div>
-
-        <div class="row">
-            <div class="col-md-5">
-                <div class="card shadow-sm border-0 mb-4">
-                    <div class="card-body">
-                        <label class="fw-bold mb-2">Buscar Cliente</label>
-                        <form method="GET" class="d-flex gap-2">
-                            <input type="number" name="buscar_dni" class="form-control" placeholder="DNI del Cliente" required value="<?php echo $_GET['buscar_dni'] ?? ''; ?>">
-                            <button class="btn btn-success"><i class="bi bi-search"></i></button>
+    <div class="container mt-4">
+        
+        <?php if (!$cliente_seleccionado): ?>
+            
+            <div class="row justify-content-center">
+                <div class="col-md-8 col-lg-6">
+                    <div class="text-center mb-4">
+                        <h2 class="fw-bold text-success"><i class="bi bi-gift"></i> Canje de Puntos</h2>
+                        <p class="text-muted">Busca al cliente para ver sus premios disponibles.</p>
+                    </div>
+                    
+                    <div class="card border-0 shadow-sm p-4">
+                        <form method="GET" action="canje_puntos.php" autocomplete="off">
+                            <div class="search-container">
+                                <label class="fw-bold small mb-1 text-muted">Nombre, DNI o CUIT</label>
+                                <div class="input-group">
+                                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                                    <input type="text" id="buscador" name="q" class="form-control form-control-lg border-start-0" 
+                                           placeholder="Escribe para predecir..." value="<?php echo $_GET['q'] ?? ''; ?>" autofocus>
+                                </div>
+                                <div id="sugerencias" class="suggestions-list"></div>
+                            </div>
+                            <div class="d-grid mt-3">
+                                <button type="submit" class="btn btn-success fw-bold">VER RESULTADOS</button>
+                            </div>
                         </form>
                     </div>
-                </div>
 
-                <?php if($cliente): ?>
-                <div class="card bg-success text-white border-0 shadow mb-3">
-                    <div class="card-body text-center py-4">
-                        <p class="mb-0 text-white-50 fw-bold">PUNTOS DISPONIBLES</p>
-                        <h1 class="display-3 fw-bold my-1"><?php echo number_format($cliente['puntos_acumulados']); ?></h1>
-                        <h4 class="fw-bold mt-2"><?php echo $cliente['nombre']; ?></h4>
-                        
-                        <?php if($cliente['saldo_favor'] > 0): ?>
-                            <div class="mt-3 bg-white text-success rounded p-2 fw-bold shadow-sm">
-                                <i class="bi bi-cash-coin"></i> Saldo a Favor: $<?php echo number_format($cliente['saldo_favor'], 2); ?>
+                    <?php if (!empty($resultados_busqueda)): ?>
+                        <div class="mt-4">
+                            <h6 class="text-muted small fw-bold text-uppercase">Coincidencias encontradas:</h6>
+                            <div class="list-group shadow-sm">
+                                <?php foreach ($resultados_busqueda as $cli): ?>
+                                    <a href="canje_puntos.php?id_cliente=<?php echo $cli['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3">
+                                        <div>
+                                            <div class="fw-bold text-dark"><?php echo $cli['nombre']; ?></div>
+                                            <small class="text-muted">DNI: <?php echo $cli['dni']; ?></small>
+                                        </div>
+                                        <span class="badge bg-warning text-dark rounded-pill">
+                                            <i class="bi bi-star-fill"></i> <?php echo $cli['puntos_acumulados']; ?>
+                                        </span>
+                                    </a>
+                                <?php endforeach; ?>
                             </div>
-                        <?php endif; ?>
-                    </div>
+                        </div>
+                    <?php endif; ?>
                 </div>
-                <?php endif; ?>
             </div>
 
-            <div class="col-md-7">
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white fw-bold">Catálogo de Premios</div>
-                    <div class="list-group list-group-flush">
-                        <?php foreach($premios as $p): ?>
-                            <?php 
-                                $alcanza = ($cliente && $cliente['puntos_acumulados'] >= $p['puntos_necesarios']);
-                                $disabled = $alcanza ? '' : 'disabled';
-                                $opacity = $alcanza ? '' : 'opacity-50';
-                            ?>
-                            <div class="list-group-item p-3 d-flex justify-content-between align-items-center <?php echo $opacity; ?>">
-                                <div>
-                                    <h5 class="mb-1 fw-bold text-dark">
-                                        <?php if($p['es_cupon']): ?>
-                                            <i class="bi bi-ticket-perforated text-warning"></i> 
-                                        <?php else: ?>
-                                            <i class="bi bi-box-seam text-primary"></i> 
-                                        <?php endif; ?>
-                                        <?php echo $p['nombre']; ?>
-                                    </h5>
-                                    <span class="badge bg-secondary rounded-pill"><?php echo $p['puntos_necesarios']; ?> Pts</span>
-                                    <?php if($p['es_cupon']): ?>
-                                        <small class="text-success fw-bold ms-2">Credita $<?php echo $p['monto_dinero']; ?></small>
-                                    <?php endif; ?>
+        <?php else: ?>
+            
+            <div class="row">
+                <div class="col-12 mb-3">
+                    <a href="canje_puntos.php" class="btn btn-outline-secondary btn-sm"><i class="bi bi-arrow-left"></i> Volver al buscador</a>
+                </div>
+                
+                <div class="col-md-4 mb-4">
+                    <div class="card border-0 shadow h-100">
+                        <div class="client-card-header text-center">
+                            <div class="display-1 mb-2"><i class="bi bi-person-circle"></i></div>
+                            <h4 class="fw-bold m-0"><?php echo $cliente_seleccionado['nombre']; ?></h4>
+                            <small class="opacity-75">DNI: <?php echo $cliente_seleccionado['dni'] ?: '--'; ?></small>
+                        </div>
+                        <div class="card-body text-center d-flex flex-column justify-content-center">
+                            <div class="py-3">
+                                <small class="text-uppercase fw-bold text-muted">Puntos Disponibles</small>
+                                <div class="display-3 fw-bold text-warning" style="text-shadow: 1px 1px 2px rgba(0,0,0,0.1);">
+                                    <?php echo number_format($cliente_seleccionado['puntos_acumulados']); ?>
                                 </div>
-                                
-                                <?php if($cliente): ?>
-                                    <button onclick="confirmarCanje('<?php echo $p['id']; ?>', '<?php echo $p['nombre']; ?>', <?php echo $p['puntos_necesarios']; ?>)" 
-                                            class="btn btn-outline-success fw-bold" <?php echo $disabled; ?>>
-                                        CANJEAR
-                                    </button>
-                                <?php endif; ?>
                             </div>
+                            <div class="border-top pt-3">
+                                <div class="row">
+                                    <div class="col-6 border-end">
+                                        <div class="small text-muted">A Favor</div>
+                                        <div class="fw-bold text-success">$<?php echo $cliente_seleccionado['saldo_favor']; ?></div>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="small text-muted">Deuda</div>
+                                        <div class="fw-bold text-danger">$<?php echo $cliente_seleccionado['saldo_deudor'] ?? 0; ?></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-md-8">
+                    <h5 class="fw-bold mb-3"><i class="bi bi-trophy text-warning"></i> Catálogo de Premios</h5>
+                    <div class="row row-cols-2 row-cols-md-3 g-3">
+                        <?php foreach($premios as $p): 
+                            $pts = $cliente_seleccionado['puntos_acumulados'];
+                            $req = $p['puntos_necesarios'];
+                            $alcanza = $pts >= $req;
+                        ?>
+                        <div class="col">
+                            <div class="card prize-card h-100 <?php echo $alcanza ? 'border-success' : 'disabled bg-light'; ?>">
+                                <div class="card-body text-center d-flex flex-column">
+                                    <div class="mb-2">
+                                        <?php if($p['es_cupon']): ?>
+                                            <i class="bi bi-ticket-perforated fs-1 text-success"></i>
+                                        <?php else: ?>
+                                            <i class="bi bi-gift fs-1 text-primary"></i>
+                                        <?php endif; ?>
+                                    </div>
+                                    <h6 class="card-title fw-bold text-truncate" title="<?php echo $p['nombre']; ?>">
+                                        <?php echo $p['nombre']; ?>
+                                    </h6>
+                                    <?php if($p['es_cupon']): ?>
+                                        <span class="badge bg-success bg-opacity-10 text-success mb-2">+$<?php echo $p['monto_dinero']; ?> Crédito</span>
+                                    <?php endif; ?>
+                                    
+                                    <div class="mt-auto pt-2">
+                                        <div class="fw-bold <?php echo $alcanza ? 'text-success' : 'text-danger'; ?> fs-5">
+                                            <?php echo $req; ?> Pts
+                                        </div>
+                                        <?php if($alcanza): ?>
+                                            <button onclick="canjear(<?php echo $p['id']; ?>, '<?php echo $p['nombre']; ?>', <?php echo $req; ?>)" class="btn btn-success btn-sm w-100 mt-2 fw-bold">Canjear</button>
+                                        <?php else: ?>
+                                            <small class="text-muted d-block mt-2">Faltan <?php echo $req - $pts; ?></small>
+                                        <?php endif; ?>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
                         <?php endforeach; ?>
                     </div>
                 </div>
             </div>
-        </div>
-    </div>
+            
+            <form id="formCanje" method="POST"><input type="hidden" name="canjear" value="1"><input type="hidden" name="id_cliente" value="<?php echo $cliente_seleccionado['id']; ?>"><input type="hidden" name="id_premio" id="inputPremio"></form>
 
-    <?php if($cliente): ?>
-    <form id="formCanje" method="POST">
-        <input type="hidden" name="canjear" value="1">
-        <input type="hidden" name="id_cliente" value="<?php echo $cliente['id']; ?>">
-        <input type="hidden" name="dni_cliente" value="<?php echo $cliente['dni'] ?? $cliente['dni_cuit']; ?>"> <input type="hidden" name="id_premio" id="inputPremio">
-        <input type="hidden" name="puntos_costo" id="inputPuntos">
-    </form>
-    <?php endif; ?>
+        <?php endif; ?>
+    </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // ALERTAS PHP
+        // ALERTAS
         <?php echo $mensaje_sweet; ?>
-        
-        // ALERTA ÉXITO (Viene por URL)
-        const urlParams = new URLSearchParams(window.location.search);
-        if(urlParams.get('exito') === '1'){
-            let txt = urlParams.get('txt');
-            Swal.fire({
-                icon: 'success',
-                title: '¡Canje Exitoso!',
-                text: txt,
-                confirmButtonColor: '#198754'
-            });
-        }
+        if(new URLSearchParams(window.location.search).get('exito')==='1') Swal.fire('¡Canje Exitoso!', 'Puntos descontados.', 'success');
 
-        // CONFIRMACIÓN DE CANJE
-        function confirmarCanje(id, nombre, costo) {
+        // LÓGICA DE CANJE
+        function canjear(id, nombre, pts) {
             Swal.fire({
                 title: '¿Canjear ' + nombre + '?',
-                text: "Se descontarán " + costo + " puntos al cliente.",
-                icon: 'question',
-                showCancelButton: true,
-                confirmButtonColor: '#198754',
-                cancelButtonColor: '#d33',
-                confirmButtonText: 'Sí, Canjear',
-                cancelButtonText: 'Cancelar'
-            }).then((result) => {
-                if (result.isConfirmed) {
-                    document.getElementById('inputPremio').value = id;
-                    document.getElementById('inputPuntos').value = costo;
-                    document.getElementById('formCanje').submit();
+                text: 'Se descontarán ' + pts + ' puntos.',
+                icon: 'question', showCancelButton: true, confirmButtonText: 'Sí, canjear', cancelButtonText: 'Cancelar', confirmButtonColor: '#198754'
+            }).then((r) => { if(r.isConfirmed) { document.getElementById('inputPremio').value = id; document.getElementById('formCanje').submit(); }});
+        }
+
+        // --- LÓGICA PREDICTIVA (JS PURO) ---
+        const input = document.getElementById('buscador');
+        const lista = document.getElementById('sugerencias');
+
+        if(input){
+            input.addEventListener('input', function() {
+                const val = this.value;
+                if (val.length < 2) { lista.style.display = 'none'; return; }
+
+                fetch('buscar_cliente_ajax.php?term=' + encodeURIComponent(val))
+                    .then(r => r.json())
+                    .then(data => {
+                        lista.innerHTML = '';
+                        if (data.length > 0) {
+                            lista.style.display = 'block';
+                            data.forEach(c => {
+                                const item = document.createElement('div');
+                                item.className = 'suggestion-item';
+                                item.innerHTML = `
+                                    <div>
+                                        <div class="fw-bold">${c.nombre}</div>
+                                        <small class="text-muted">DNI: ${c.dni}</small>
+                                    </div>
+                                    <span class="badge bg-warning text-dark rounded-pill ms-2">
+                                        <i class="bi bi-star-fill"></i> ${c.puntos}
+                                    </span>
+                                `;
+                                item.onclick = () => {
+                                    window.location.href = 'canje_puntos.php?id_cliente=' + c.id;
+                                };
+                                lista.appendChild(item);
+                            });
+                        } else {
+                            lista.style.display = 'none';
+                        }
+                    });
+            });
+
+            // Cerrar lista si clic fuera
+            document.addEventListener('click', function(e) {
+                if (e.target !== input && e.target !== lista) {
+                    lista.style.display = 'none';
                 }
-            })
+            });
         }
     </script>
 </body>

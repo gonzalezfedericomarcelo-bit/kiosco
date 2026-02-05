@@ -1,12 +1,11 @@
 <?php
-// admin_revista.php - VERSIÓN FULL RESTAURADA
+// admin_revista.php - VERSIÓN FINAL CON MENÚ FUNCIONAL
 require_once 'includes/db.php';
 
 $mensaje = '';
 $tipo_mensaje = '';
 
-// --- AUTO-CORRECCIÓN SILENCIOSA DE COLUMNAS FALTANTES ---
-// Esto asegura que si falta una columna nueva en tu DB, se cree sola y no rompa nada.
+// --- AUTO-CORRECCIÓN DE COLUMNAS (INTACTO) ---
 try {
     $cols = [
         "tapa_overlay DECIMAL(3,2) DEFAULT '0.4'",
@@ -22,15 +21,12 @@ try {
         "tapa_banner_opacity DECIMAL(3,2) DEFAULT '0.90'",
         "bienv_bg_color VARCHAR(20) DEFAULT '#ffffff'"
     ];
-    // Asegurar tabla config
     $conexion->exec("CREATE TABLE IF NOT EXISTS revista_config (id INT PRIMARY KEY)");
     $conexion->exec("INSERT INTO revista_config (id) VALUES (1) ON DUPLICATE KEY UPDATE id=id");
     
-    // Asegurar columnas
     foreach($cols as $col) {
         try { $conexion->exec("ALTER TABLE revista_config ADD COLUMN $col"); } catch(Exception $e){}
     }
-    // Asegurar tabla paginas
     $conexion->exec("CREATE TABLE IF NOT EXISTS revista_paginas (id INT PRIMARY KEY AUTO_INCREMENT, nombre_referencia VARCHAR(100), posicion INT DEFAULT 5, imagen_url VARCHAR(255), boton_texto VARCHAR(50), boton_link VARCHAR(255), activa TINYINT DEFAULT 1)");
 } catch(Exception $e) {}
 // ---------------------------------------------------------
@@ -54,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     $bienv_txt_color = $_POST['bienv_txt_color'] ?? '#555555';
     $fuente_global = $_POST['fuente_global'] ?? 'Poppins';
 
-    // Imágenes (Mantener anterior si no se sube nueva)
+    // Imágenes
     $stmt_actual = $conexion->query("SELECT img_tapa, img_bienvenida FROM revista_config WHERE id=1");
     $actual = $stmt_actual->fetch(PDO::FETCH_ASSOC);
     
@@ -116,45 +112,54 @@ if (isset($_GET['borrar'])) {
     header("Location: admin_revista.php"); exit;
 }
 
-// LEER DATOS
-$conf = $conexion->query("SELECT * FROM revista_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-if(!$conf) $conf = [];
+// LEER DATOS (Variable $revista_cfg usada para NO chocar con menú)
+$revista_cfg = $conexion->query("SELECT * FROM revista_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+if(!$revista_cfg) $revista_cfg = [];
 $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
     <title>Admin Revista Full</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
         .preview-img { width: 100%; height: 120px; object-fit: cover; border: 2px solid #ddd; border-radius: 5px; background: #eee; }
         .card-header { font-weight: bold; text-transform: uppercase; }
+        body { padding-bottom: 80px; }
     </style>
 </head>
-<body class="bg-light pb-5">
+<body class="bg-light">
+
+    <?php 
+    if(file_exists('menu.php')) include 'menu.php'; 
+    elseif(file_exists('includes/menu.php')) include 'includes/menu.php';
+    ?>
+
     <div class="container mt-4">
         <?php if($mensaje): ?>
             <div class="alert alert-<?php echo $tipo_mensaje; ?>"><?php echo $mensaje; ?></div>
         <?php endif; ?>
         
-        <div class="d-flex justify-content-between mb-4">
+        <div class="d-flex flex-column flex-md-row justify-content-between mb-4 gap-2">
             <h3><i class="bi bi-palette-fill"></i> Panel de Revista</h3>
-            <a href="revista.php" target="_blank" class="btn btn-dark"><i class="bi bi-eye"></i> Ver Resultado</a>
+            <a href="revista.php" target="_blank" class="btn btn-dark w-100 w-md-auto"><i class="bi bi-eye"></i> Ver Resultado</a>
         </div>
 
         <form method="POST" enctype="multipart/form-data">
             <input type="hidden" name="accion" value="guardar_config">
             
-            <div class="row">
-                <div class="col-lg-5">
+            <div class="row g-4">
+                
+                <div class="col-12 col-lg-5">
                     
                     <div class="card mb-3 shadow-sm">
                         <div class="card-header bg-dark text-white">Tipografía</div>
                         <div class="card-body py-2">
                             <select name="fuente_global" class="form-select form-select-sm">
-                                <?php $f = $conf['fuente_global'] ?? 'Poppins'; ?>
+                                <?php $f = $revista_cfg['fuente_global'] ?? 'Poppins'; ?>
                                 <option value="Poppins" <?php echo ($f=='Poppins')?'selected':''; ?>>Poppins (Moderna)</option>
                                 <option value="Roboto" <?php echo ($f=='Roboto')?'selected':''; ?>>Roboto (Clásica)</option>
                                 <option value="Anton" <?php echo ($f=='Anton')?'selected':''; ?>>Anton (Impacto)</option>
@@ -166,40 +171,46 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                         <div class="card-header bg-primary text-white">1. Portada</div>
                         <div class="card-body">
                             <div class="mb-2 text-center">
-                                <?php if(!empty($conf['img_tapa'])): ?><img src="<?php echo $conf['img_tapa']; ?>" class="preview-img"><?php endif; ?>
+                                <?php if(!empty($revista_cfg['img_tapa'])): ?>
+                                    <img src="<?php echo $revista_cfg['img_tapa']; ?>?v=<?php echo time(); ?>" class="preview-img">
+                                    <div class="small text-success mt-1"><i class="bi bi-check-circle"></i> Imagen cargada</div>
+                                <?php else: ?>
+                                    <div class="p-3 bg-light text-muted border rounded">Sin imagen actual</div>
+                                <?php endif; ?>
                             </div>
-                            <label class="small fw-bold">Imagen Fondo</label>
+                            
+                            <label class="small fw-bold">Cambiar Imagen Fondo</label>
                             <input type="file" name="img_tapa" class="form-control form-control-sm mb-2">
                             
                             <label class="small fw-bold">Oscuridad (Overlay)</label>
-                            <input type="range" name="tapa_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $conf['tapa_overlay'] ?? '0.4'; ?>">
+                            <input type="range" name="tapa_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $revista_cfg['tapa_overlay'] ?? '0.4'; ?>">
 
                             <div class="row g-2">
                                 <div class="col-6">
                                     <label class="small">Título</label>
-                                    <input type="text" name="titulo_tapa" class="form-control form-control-sm" value="<?php echo $conf['titulo_tapa'] ?? ''; ?>">
+                                    <input type="text" name="titulo_tapa" class="form-control form-control-sm" value="<?php echo $revista_cfg['titulo_tapa'] ?? ''; ?>">
                                 </div>
                                 <div class="col-6">
                                     <label class="small">Color</label>
-                                    <input type="color" name="tapa_tit_color" class="form-control form-control-color w-100" value="<?php echo $conf['tapa_tit_color'] ?? '#ffde00'; ?>">
+                                    <input type="color" name="tapa_tit_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['tapa_tit_color'] ?? '#ffde00'; ?>">
                                 </div>
                                 <div class="col-6">
                                     <label class="small">Subtítulo</label>
-                                    <input type="text" name="subtitulo_tapa" class="form-control form-control-sm" value="<?php echo $conf['subtitulo_tapa'] ?? ''; ?>">
+                                    <input type="text" name="subtitulo_tapa" class="form-control form-control-sm" value="<?php echo $revista_cfg['subtitulo_tapa'] ?? ''; ?>">
                                 </div>
                                 <div class="col-6">
                                     <label class="small">Color</label>
-                                    <input type="color" name="tapa_sub_color" class="form-control form-control-color w-100" value="<?php echo $conf['tapa_sub_color'] ?? '#ffffff'; ?>">
+                                    <input type="color" name="tapa_sub_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['tapa_sub_color'] ?? '#ffffff'; ?>">
                                 </div>
                             </div>
 
                             <hr class="my-2">
                             <label class="small fw-bold">Fondo del Logo</label>
                             <div class="input-group input-group-sm">
-                                <input type="color" name="tapa_banner_color" class="form-control form-control-color" value="<?php echo $conf['tapa_banner_color'] ?? '#ffffff'; ?>">
+                                <input type="color" name="tapa_banner_color" class="form-control form-control-color" value="<?php echo $revista_cfg['tapa_banner_color'] ?? '#ffffff'; ?>">
                                 <select name="tapa_banner_opacity" class="form-select">
-                                    <option value="0" <?php echo (($conf['tapa_banner_opacity']??'')=='0')?'selected':''; ?>>Invisible</option>
-                                    <option value="0.9" <?php echo (($conf['tapa_banner_opacity']??'')=='0.9')?'selected':''; ?>>Visible</option>
+                                    <option value="0" <?php echo (($revista_cfg['tapa_banner_opacity']??'')=='0')?'selected':''; ?>>Invisible</option>
+                                    <option value="0.9" <?php echo (($revista_cfg['tapa_banner_opacity']??'')=='0.9')?'selected':''; ?>>Visible</option>
                                 </select>
                             </div>
                         </div>
@@ -209,68 +220,75 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                         <div class="card-header bg-success text-white">2. Bienvenida</div>
                         <div class="card-body">
                             <div class="mb-2 text-center">
-                                <?php if(!empty($conf['img_bienvenida'])): ?><img src="<?php echo $conf['img_bienvenida']; ?>" class="preview-img"><?php endif; ?>
+                                <?php if(!empty($revista_cfg['img_bienvenida'])): ?>
+                                    <img src="<?php echo $revista_cfg['img_bienvenida']; ?>?v=<?php echo time(); ?>" class="preview-img">
+                                    <div class="small text-success mt-1"><i class="bi bi-check-circle"></i> Imagen cargada</div>
+                                <?php else: ?>
+                                    <div class="p-3 bg-light text-muted border rounded">Sin imagen actual</div>
+                                <?php endif; ?>
                             </div>
-                            <label class="small fw-bold">Imagen (Vecino/Local)</label>
+
+                            <label class="small fw-bold">Cambiar Imagen (Vecino/Local)</label>
                             <input type="file" name="img_bienvenida" class="form-control form-control-sm mb-2">
                             
                             <label class="small fw-bold">Oscuridad Foto</label>
-                            <input type="range" name="bienv_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $conf['bienv_overlay'] ?? '0.0'; ?>">
+                            <input type="range" name="bienv_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $revista_cfg['bienv_overlay'] ?? '0.0'; ?>">
 
                             <div class="row g-2">
                                 <div class="col-8">
-                                    <input type="text" name="bienvenida_tit" class="form-control form-control-sm" placeholder="Título" value="<?php echo $conf['texto_bienvenida_titulo'] ?? ''; ?>">
+                                    <input type="text" name="bienvenida_tit" class="form-control form-control-sm" placeholder="Título" value="<?php echo $revista_cfg['texto_bienvenida_titulo'] ?? ''; ?>">
                                 </div>
                                 <div class="col-4">
-                                    <input type="color" name="bienv_tit_color" class="form-control form-control-color w-100" value="<?php echo $conf['bienv_tit_color'] ?? '#333333'; ?>">
+                                    <input type="color" name="bienv_tit_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_tit_color'] ?? '#333333'; ?>">
                                 </div>
                                 <div class="col-8">
-                                    <textarea name="bienvenida_text" class="form-control form-control-sm" rows="2" placeholder="Mensaje"><?php echo $conf['texto_bienvenida_cuerpo'] ?? ''; ?></textarea>
+                                    <textarea name="bienvenida_text" class="form-control form-control-sm" rows="2" placeholder="Mensaje"><?php echo $revista_cfg['texto_bienvenida_cuerpo'] ?? ''; ?></textarea>
                                 </div>
                                 <div class="col-4">
-                                    <input type="color" name="bienv_txt_color" class="form-control form-control-color w-100" value="<?php echo $conf['bienv_txt_color'] ?? '#555555'; ?>">
+                                    <input type="color" name="bienv_txt_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_txt_color'] ?? '#555555'; ?>">
                                 </div>
                             </div>
                             
                             <div class="mt-2">
                                 <label class="small fw-bold">Color Fondo Panel Texto</label>
-                                <input type="color" name="bienv_bg_color" class="form-control form-control-color w-100" value="<?php echo $conf['bienv_bg_color'] ?? '#ffffff'; ?>">
+                                <input type="color" name="bienv_bg_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_bg_color'] ?? '#ffffff'; ?>">
                             </div>
                         </div>
                     </div>
 
-                    <button type="submit" class="btn btn-primary w-100 fw-bold py-3 mb-4">GUARDAR CAMBIOS</button>
+                    <button type="submit" class="btn btn-primary w-100 fw-bold py-3 mb-4 shadow-sm">GUARDAR CAMBIOS</button>
                 </div>
 
-                <div class="col-lg-7">
+                <div class="col-12 col-lg-7">
                     <div class="card shadow-sm">
                         <div class="card-header bg-danger text-white d-flex justify-content-between">
                             <span>Páginas Especiales / Ads</span>
                             <span class="badge bg-white text-danger"><?php echo count($paginas); ?></span>
                         </div>
                         <div class="card-body bg-light">
-                            <div class="row g-2 mb-3 border-bottom pb-3">
+                            <div class="row g-2 mb-3 border-bottom pb-3 align-items-end">
                                 <input type="hidden" name="accion" value="nueva_pagina">
-                                <div class="col-md-4">
+                                
+                                <div class="col-12 col-md-4">
                                     <label class="small fw-bold">Nombre</label>
                                     <input type="text" name="nombre" class="form-control form-control-sm" required>
                                 </div>
-                                <div class="col-md-2">
+                                <div class="col-6 col-md-2">
                                     <label class="small fw-bold text-danger">Posición</label>
                                     <input type="number" name="posicion" class="form-control form-control-sm" required placeholder="0, 5...">
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-12 col-md-6">
                                     <label class="small fw-bold">Imagen</label>
                                     <input type="file" name="imagen" class="form-control form-control-sm" required>
                                 </div>
-                                <div class="col-md-6">
-                                    <input type="text" name="btn_txt" class="form-control form-control-sm" placeholder="Texto Botón (Opcional)">
+                                <div class="col-6 col-md-6">
+                                    <input type="text" name="btn_txt" class="form-control form-control-sm" placeholder="Texto Botón">
                                 </div>
-                                <div class="col-md-6">
-                                    <input type="text" name="btn_link" class="form-control form-control-sm" placeholder="Link Botón (Opcional)">
+                                <div class="col-6 col-md-6">
+                                    <input type="text" name="btn_link" class="form-control form-control-sm" placeholder="Link Botón">
                                 </div>
                                 <div class="col-12 text-end mt-2">
-                                    <button type="submit" class="btn btn-success btn-sm px-4 fw-bold">AGREGAR PÁGINA</button>
+                                    <button type="submit" class="btn btn-success btn-sm px-4 fw-bold w-100 w-md-auto">AGREGAR PÁGINA</button>
                                 </div>
                             </div>
                             
@@ -296,5 +314,7 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
             </div>
         </form>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

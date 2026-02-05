@@ -1,5 +1,5 @@
 <?php
-// revista_builder.php - VERSIÓN CORREGIDA: DESCARGA PDF POR CLONACIÓN (INFALIBLE)
+// revista_builder.php - VERSIÓN FINAL CORREGIDA: IMPRESIÓN LIMPIA (SIN ENCABEZADOS DE NAVEGADOR)
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
@@ -14,8 +14,6 @@ $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::F
 // 3. DATOS SMART
 $url_tienda = "https://federicogonzalez.net/kiosco/tienda.php";
 $url_registro = "https://federicogonzalez.net/kiosco/registro_cliente.php";
-
-// Logo fallback
 $logo_url = !empty($conf['logo_url']) ? $conf['logo_url'] : 'https://cdn-icons-png.flaticon.com/512/3594/3594450.png';
 
 $smart_data = [
@@ -32,7 +30,7 @@ $smart_data = [
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Editor - <?php echo $smart_data['nombre']; ?></title>
+    <title>Revista Ofertas</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
@@ -49,7 +47,6 @@ $smart_data = [
         .nav-tabs .nav-link { border-radius: 0; color: #555; font-weight: bold; cursor: pointer; }
         .nav-tabs .nav-link.active { border-top: 4px solid var(--yaguar-red); color: var(--yaguar-red); background: #f8f9fa; }
         .tab-content { flex-grow: 1; overflow-y: auto; background: #f8f9fa; padding: 15px; }
-
         .tool-item { padding: 8px; background: #fff; border: 1px solid #ddd; margin-bottom: 5px; cursor: grab; display: flex; align-items: center; border-radius: 4px; font-size: 14px; color: #333; }
         .tool-item:hover { background: #f0f0f0; border-color: #bbb; }
         .tool-item img { width: 40px; height: 40px; object-fit: contain; margin-right: 10px; background: white; border: 1px solid #eee; display: block; }
@@ -63,7 +60,8 @@ $smart_data = [
         .page-wrapper { margin-bottom: 50px; position: relative; transition: all 0.2s; }
         .page-header-ui { background: #fff; color: #333; padding: 5px 10px; font-size: 12px; display: flex; justify-content: space-between; width: var(--a4-w); margin: 0 auto; border: 1px solid #ccc; border-bottom: none; font-weight: bold; border-top-left-radius: 4px; border-top-right-radius: 4px; }
         .page { width: var(--a4-w); min-height: var(--a4-h); background: white; position: relative; overflow: visible; box-shadow: 0 5px 15px rgba(0,0,0,0.5); transform-origin: top center; margin: 0 auto; }
-        .page::after { content: "--- LÍMITE DE IMPRESIÓN ---"; position: absolute; top: var(--a4-h); left: 0; width: 100%; border-bottom: 2px dashed red; color: red; font-size: 12px; text-align: right; pointer-events: none; z-index: 100; }
+        
+        .page::after { content: "--- FIN RECOMENDADO A4 ---"; position: absolute; top: var(--a4-h); left: 0; width: 100%; border-bottom: 2px dashed red; color: red; font-size: 10px; text-align: right; pointer-events: none; z-index: 100; opacity: 0.6; }
 
         /* SELECCIONES */
         .page.active-page { outline: 4px solid var(--yaguar-yellow); box-shadow: 0 0 20px rgba(255, 196, 0, 0.6); z-index: 10; }
@@ -73,17 +71,9 @@ $smart_data = [
         .float-item { position: absolute; cursor: grab; border: 1px dashed transparent; z-index: 200; min-width: 20px; min-height: 20px; }
         .float-item:hover { outline: 2px dashed #0d6efd; cursor: move; }
         .float-item.redimensionando { border: 2px solid #0d6efd !important; z-index: 5000; box-shadow: 0 0 10px rgba(13, 110, 253, 0.3); }
-        .resize-handle { width: 16px; height: 16px; background: #0d6efd; position: absolute; bottom: -8px; right: -8px; cursor: se-resize; display: none; border-radius: 50%; border: 2px solid white; z-index: 6000; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
+        .resize-handle { width: 14px; height: 14px; background: #0d6efd; position: absolute; bottom: -7px; right: -7px; cursor: se-resize; display: none; border-radius: 50%; border: 2px solid white; z-index: 6000; box-shadow: 0 2px 4px rgba(0,0,0,0.3); }
         .float-item.redimensionando .resize-handle { display: block; }
-
-        /* BANNERS INTERACTIVOS */
-        .banner-img { 
-            width: 100%; height: 100%; 
-            object-fit: cover; 
-            object-position: 50% 50%;
-            cursor: grab; 
-            transition: transform 0.1s; 
-        }
+        .banner-img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 50%; cursor: grab; transition: transform 0.1s; }
         .banner-img:active { cursor: grabbing; }
 
         /* MENU CONTEXTUAL */
@@ -93,22 +83,25 @@ $smart_data = [
         .ctx-divider { height: 1px; background: #eee; margin: 5px 0; }
         .ctx-header { padding: 5px 15px; font-size: 11px; color: #888; font-weight: bold; background: #f9f9f9; border-bottom: 1px solid #eee; }
 
-        /* SECCIONES Y HERRAMIENTAS */
-        .section-row { position: relative; width: 100%; border: 1px dashed transparent; min-height: 20px; transition: 0.1s; overflow: hidden; }
-        .section-row:hover { border: 1px dashed #0d6efd; z-index: 10; overflow: visible; }
+        /* SECCIONES (FILAS) */
+        .section-row { position: relative; width: 100%; border: 1px dashed transparent; transition: 0.1s; overflow: visible; }
+        .section-row:hover { border: 1px dashed #0d6efd; z-index: 10; }
         
         .row-resizer { position: absolute; bottom: -5px; left: 0; width: 100%; height: 15px; cursor: ns-resize; display: none; align-items: center; justify-content: center; z-index: 50; }
         .section-row:hover .row-resizer { display: flex; }
-        .resizer-bar { width: 60px; height: 6px; background: #0d6efd; border-radius: 3px; border: 1px solid white; }
-        .sec-tools { position: absolute; right: -30px; top: 0; width: 30px; display: none; flex-direction: column; gap: 2px; z-index: 100; }
+        
+        .sec-tools { position: absolute; right: -32px; top: 0; width: 30px; display: none; flex-direction: column; gap: 3px; z-index: 9999; }
         .section-row:hover .sec-tools { display: flex; }
-        .btn-sec { width: 30px; height: 30px; background: white; border: 1px solid #ccc; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; }
-        .btn-sec:hover { background: #eee; }
-        .btn-sec.del { background: #dc3545; color: white; border-color: #dc3545; }
-        .header-bg-tools { position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.8); padding: 3px; border-radius: 4px; display: none; gap: 5px; z-index: 50; border: 1px solid #ccc; }
+        
+        .btn-sec { width: 28px; height: 28px; background: white; border: 1px solid #999; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 14px; border-radius: 4px; box-shadow: 1px 1px 3px rgba(0,0,0,0.1); color: #333; }
+        .btn-sec:hover { background: #0d6efd; color: white; border-color: #0d6efd; }
+        .btn-sec.del { background: #fff; color: #dc3545; border-color: #dc3545; }
+        .btn-sec.del:hover { background: #dc3545; color: white; }
+
+        .header-bg-tools { position: absolute; top: 5px; right: 5px; background: rgba(255,255,255,0.9); padding: 4px; border-radius: 4px; display: none; gap: 5px; z-index: 50; border: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
         .section-row:hover .header-bg-tools { display: flex; }
 
-        /* ESTILOS INTERNOS */
+        /* GRILLAS */
         .sec-bg { width: 100%; height: 100%; position: absolute; top: 0; left: 0; z-index: 0; }
         .sec-grid { display: flex; flex-wrap: wrap; width: 100%; height: 100%; position: relative; z-index: 5; }
         .sec-col { border: 1px dashed #ddd; flex: 1; position: relative; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100%; min-height: 50px; cursor: pointer; overflow: hidden; }
@@ -116,33 +109,39 @@ $smart_data = [
         .sec-col.filled { border: none; background: white; }
         
         /* TARJETA PRODUCTO */
-        .card-prod { width: 100%; height: 100%; padding: 5px; display: flex; flex-direction: column; pointer-events: none; align-items: center; position: relative; }
-        .badge-off { position: absolute; top: 0; right: 0; background: var(--yaguar-red); color: white; font-size: 11px; font-weight: 900; padding: 2px 6px; z-index: 5; }
-        .prod-img { flex: 1; width: auto; max-width: 95%; max-height: 120px; object-fit: contain; margin-bottom: 5px; }
-        .prod-title { text-align: center; font-size: 13px; font-weight: 700; line-height: 1.1; margin-bottom: 5px; text-transform: uppercase; color: #333; }
-        .prod-price-box { background: var(--yaguar-yellow); color: var(--yaguar-red); font-weight: 900; font-size: 1.6rem; transform: rotate(-2deg); padding: 0 8px; border-radius: 4px; box-shadow: 2px 2px 4px rgba(0,0,0,0.2); margin-bottom: 5px; }
+        .card-prod { width: 100%; height: 100%; padding: 4px; display: flex; flex-direction: column; pointer-events: none; align-items: center; position: relative; justify-content: center; }
+        .badge-off { position: absolute; top: 0; right: 0; background: var(--yaguar-red); color: white; font-size: 10px; font-weight: 900; padding: 2px 5px; z-index: 5; }
+        .prod-img { flex: 0 0 auto; max-width: 90%; max-height: 90px; object-fit: contain; margin-bottom: 3px; }
+        .prod-title { text-align: center; font-size: 12px; font-weight: 700; line-height: 1.1; margin-bottom: 2px; text-transform: uppercase; color: #333; max-height: 28px; overflow: hidden; }
+        .prod-price-box { background: var(--yaguar-yellow); color: var(--yaguar-red); font-weight: 900; font-size: 1.4rem; transform: rotate(-2deg); padding: 0 6px; border-radius: 4px; box-shadow: 2px 2px 4px rgba(0,0,0,0.2); }
         .btn-del-prod { position: absolute; top: 0; left: 0; background: red; color: white; border: none; width: 20px; height: 20px; font-size: 12px; cursor: pointer; display: none; z-index: 10; pointer-events: auto; }
         .sec-col:hover .btn-del-prod { display: block; }
 
-        /* CLASES DE AYUDA PARA GENERACIÓN PDF */
-        body.generating-pdf .no-print, body.generating-pdf #sidebar, body.generating-pdf #toolbar-top, body.generating-pdf .sec-tools, body.generating-pdf .header-bg-tools, body.generating-pdf .resize-handle, body.generating-pdf .btn-del-prod, body.generating-pdf .page-header-ui, body.generating-pdf .section-row { border: none !important; display: none !important; }
-        body.generating-pdf .page { box-shadow: none !important; margin: 0 !important; outline: none !important; }
-        body.generating-pdf .sec-col { box-shadow: none !important; background: transparent !important; }
-        body.generating-pdf .section-row { overflow: hidden !important; } 
+        /* --- CLASES CRÍTICAS PARA PDF --- */
+        body.generating-pdf { background: white !important; }
+        body.generating-pdf #sidebar, body.generating-pdf #toolbar-top, body.generating-pdf .sec-tools, body.generating-pdf .header-bg-tools, body.generating-pdf .resize-handle, body.generating-pdf .btn-del-prod, body.generating-pdf .page-header-ui, body.generating-pdf .row-resizer, body.generating-pdf .no-print { display: none !important; }
+        body.generating-pdf .page { margin: 0 !important; box-shadow: none !important; border: none !important; outline: none !important; transform: none !important; }
+        body.generating-pdf .page::after { display: none !important; }
+        body.generating-pdf .section-row { border: none !important; }
+        body.generating-pdf .sec-col { border: none !important; background: transparent !important; }
+        body.generating-pdf .float-item { border: none !important; }
 
-        /* ESTILOS IMPRESIÓN NATIVA */
-        @page { size: A4; margin: 0; }
+        /* --- IMPRESIÓN (CTRL+P) CORREGIDA: ESTO QUITA LA BASURA --- */
         @media print {
-            body { background: white; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-            #app-container { display: block; height: auto; overflow: visible; }
+            /* ESTA REGLA MÁGICA QUITA ENCABEZADOS Y PIES DE PÁGINA DEL NAVEGADOR */
+            @page { margin: 0; size: A4; }
+            
+            body { background: white; margin: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; height: auto; overflow: visible; }
             #sidebar, #toolbar-top, #context-menu, .no-print, .sec-tools, .header-bg-tools, .row-resizer, .resize-handle, .btn-del-prod, .page-header-ui { display: none !important; }
-            #workspace-container { position: static !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
+            
+            #app-container { display: block !important; height: auto !important; overflow: visible !important; }
+            #workspace-container { display: block !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
             #canvas-scroll { padding: 0 !important; margin: 0 !important; overflow: visible !important; }
+            
             .page-wrapper { margin: 0 !important; padding: 0 !important; height: auto !important; page-break-after: always; }
-            .page { width: 210mm !important; height: 297mm !important; margin: 0 !important; box-shadow: none !important; border: none !important; outline: none !important; transform: none !important; }
+            .page { width: 210mm !important; height: 296mm !important; margin: 0 !important; box-shadow: none !important; border: none !important; transform: none !important; }
             .page::after { display: none !important; } 
-            .section-row, .sec-col, .float-item { border: none !important; outline: none !important; box-shadow: none !important; background-color: transparent !important; }
-            .section-row { overflow: hidden !important; }
+            .section-row, .sec-col, .float-item { border: none !important; }
         }
     </style>
 </head>
@@ -172,12 +171,15 @@ $smart_data = [
 
         <div class="tab-content">
             <div class="tab-pane fade show active" id="tab-struct">
+                <div class="alert alert-warning small p-2 fw-bold text-center">
+                    A4 RECOMENDADO:<br>Header + 4 Filas (210px) + Footer
+                </div>
                 <p class="text-muted small mt-2 fw-bold">PRESETS</p>
                 <div class="d-grid gap-2">
-                    <button class="btn btn-outline-dark text-start" onclick="addPreset('header')"><i class="bi bi-window-dock"></i> Header</button>
-                    <button class="btn btn-outline-dark text-start" onclick="addPreset('footer')"><i class="bi bi-window-sidebar"></i> Footer</button>
+                    <button class="btn btn-outline-dark text-start" onclick="addPreset('header')"><i class="bi bi-window-dock"></i> Header (130px)</button>
+                    <button class="btn btn-outline-dark text-start" onclick="addPreset('footer')"><i class="bi bi-window-sidebar"></i> Footer (130px)</button>
                 </div>
-                <p class="text-muted small mt-3 fw-bold">GRILLAS</p>
+                <p class="text-muted small mt-3 fw-bold">GRILLAS (210px)</p>
                 <div class="row g-2">
                     <div class="col-6"><button class="btn btn-light border w-100" onclick="addSection('grid', 2)">2 Cols</button></div>
                     <div class="col-6"><button class="btn btn-light border w-100" onclick="addSection('grid', 3)">3 Cols</button></div>
@@ -228,13 +230,13 @@ $smart_data = [
         </div>
         
         <div class="p-3 border-top d-grid gap-2">
-               <button onclick="printCanvas()" class="btn btn-outline-secondary w-100 fw-bold"><i class="bi bi-printer"></i> IMPRIMIR</button>
+               <button onclick="window.print()" class="btn btn-outline-secondary w-100 fw-bold"><i class="bi bi-printer"></i> IMPRIMIR</button>
         </div>
     </div>
 
     <div id="workspace-container" onclick="deselectAll(event)">
         <div id="toolbar-top" class="no-print">
-            <div class="fw-bold">EDITOR VISUAL</div>
+            <div class="fw-bold text-white">EDITOR VISUAL A4</div>
             <div>
                 <button class="btn btn-sm btn-light border" onclick="zoom(-0.1)">-</button>
                 <button class="btn btn-sm btn-light border" onclick="zoom(0.1)">+</button>
@@ -250,8 +252,7 @@ $smart_data = [
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     const SMART = <?php echo json_encode($smart_data); ?>;
-    let currentZoom = 0.8;
-    let savedZoom = 0.8;
+    let currentZoom = 0.7; 
     let activeElement = null;
     let activePage = null;
     let activeCol = null;
@@ -277,77 +278,69 @@ $smart_data = [
     function getTargetPage() {
         if (activePage && document.body.contains(activePage)) return activePage;
         const pages = document.querySelectorAll('.page');
-        if (pages.length > 0) {
-            const last = pages[pages.length-1];
-            setActivePage(last);
-            return last;
-        }
+        if (pages.length > 0) { const last = pages[pages.length-1]; setActivePage(last); return last; }
         return null;
     }
 
-    function printCanvas() {
-        savedZoom = currentZoom;
-        currentZoom = 1; applyZoom();
-        setTimeout(() => {
-            window.print();
-            currentZoom = savedZoom; applyZoom();
-        }, 500);
-    }
-
-    // --- FIX DEFINITIVO: CLONACIÓN DE DOM PARA PDF ---
-    // Esta función crea una copia limpia de las hojas, sin zoom ni interfaz,
-    // para que el generador de PDF no falle nunca.
+    // --- PDF FUNCTION CORREGIDA ---
     function downloadDirectPDF() {
-        // 1. Clonar el contenedor de páginas
+        window.scrollTo(0,0);
+        
+        // 1. Clonar
         const element = document.getElementById('pages-container');
         const clone = element.cloneNode(true);
         
-        // 2. Preparar el clon fuera de la vista pero "visible" para el script
-        clone.style.width = '210mm';
-        clone.style.position = 'absolute';
-        clone.style.top = '0';
-        clone.style.left = '0';
-        clone.style.zIndex = '99999';
-        clone.style.background = 'white';
+        // 2. Preparar CLON (Limpiar zoom y bordes)
+        clone.style.width = '210mm'; // Ancho A4 exacto
+        clone.style.position = 'absolute'; clone.style.top = '0'; clone.style.left = '0'; clone.style.zIndex = '99999'; clone.style.background = 'white';
         
-        // 3. Limpiar el clon (quitar botones de borrar hoja, bordes amarillos, etc)
-        clone.querySelectorAll('.page-header-ui').forEach(e => e.remove());
+        // Limpiar interfaz del clon
+        clone.querySelectorAll('.page-header-ui, .sec-tools, .row-resizer, .resize-handle, .btn-del-prod').forEach(e => e.remove());
         clone.querySelectorAll('.page').forEach(p => {
-            p.style.transform = 'none'; // Quitar zoom
+            p.style.transform = 'none'; // CRÍTICO: Quitar zoom
             p.style.margin = '0';
             p.style.boxShadow = 'none';
+            p.style.border = 'none';
             p.classList.remove('active-page');
+            p.style.height = '296mm'; 
         });
         clone.querySelectorAll('.sec-col').forEach(c => c.classList.remove('active-col'));
+        clone.querySelectorAll('.section-row').forEach(r => r.style.border = 'none');
 
-        // 4. Agregar clon al body temporalmente
+        // 3. Inyectar clon
         document.body.appendChild(clone);
-        document.body.classList.add('generating-pdf'); // Ocultar lo demás
+        document.body.classList.add('generating-pdf'); // Ocultar lo original
 
+        // 4. Config html2pdf
         const opt = {
-            margin:       0,
-            filename:     'Catalogo.pdf',
-            image:        { type: 'jpeg', quality: 0.98 },
-            html2canvas:  { scale: 2, useCORS: true, scrollY: 0 },
-            jsPDF:        { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            margin: 0,
+            filename: 'Ofertas_Kiosco.pdf',
+            image: { type: 'jpeg', quality: 0.98 },
+            html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
         };
 
-        // 5. Generar PDF sobre el clon
-        html2pdf().set(opt).from(clone).save().then(() => {
-            // 6. Limpieza final
-            document.body.classList.remove('generating-pdf');
-            document.body.removeChild(clone);
-        });
+        // 5. Generar con pequeña pausa para renderizado
+        setTimeout(() => {
+            html2pdf().set(opt).from(clone).save().then(() => {
+                document.body.classList.remove('generating-pdf');
+                if(document.body.contains(clone)) document.body.removeChild(clone);
+            }).catch(err => {
+                console.error(err);
+                document.body.classList.remove('generating-pdf');
+                if(document.body.contains(clone)) document.body.removeChild(clone);
+                alert('Error al generar PDF. Por favor use la opción IMPRIMIR -> Guardar como PDF.');
+            });
+        }, 800);
     }
 
+    // --- CONTEXT MENU Y LOGICA ---
     document.addEventListener('contextmenu', function(e) {
         const target = e.target.closest('.float-item, .card-prod, .banner-img');
         if (target && target.classList.contains('banner-img')) {
-            e.preventDefault();
-            showContext(e, target, 'banner');
+            e.preventDefault(); showContext(e, target, 'banner');
         } else if (target) {
-            e.preventDefault(); 
-            showContext(e, target, 'float');
+            e.preventDefault(); showContext(e, target, 'float');
         }
     });
 
@@ -356,57 +349,28 @@ $smart_data = [
 
     function showContext(e, el, type) {
         activeElement = el;
-        
         document.querySelectorAll('.ctx-general').forEach(i => i.style.display = (type==='float') ? 'flex' : 'none');
         document.querySelectorAll('.ctx-text-only').forEach(i => i.style.display = (el.dataset.type === 'text') ? 'flex' : 'none');
         document.querySelectorAll('.ctx-banner-only').forEach(i => i.style.display = (type==='banner') ? 'flex' : 'none');
-
-        ctxMenu.style.display = 'block';
-        ctxMenu.style.left = e.pageX + 'px';
-        ctxMenu.style.top = e.pageY + 'px';
+        ctxMenu.style.display = 'block'; ctxMenu.style.left = e.pageX + 'px'; ctxMenu.style.top = e.pageY + 'px';
     }
 
     function menuAction(action) {
         if (!activeElement) return;
         ctxMenu.style.display = 'none';
-
-        if (action === 'resize_mode') {
-            document.querySelectorAll('.redimensionando').forEach(x => x.classList.remove('redimensionando'));
-            activeElement.classList.add('redimensionando');
-        }
+        if (action === 'resize_mode') { document.querySelectorAll('.redimensionando').forEach(x => x.classList.remove('redimensionando')); activeElement.classList.add('redimensionando'); }
         else if (action === 'delete') { if(confirm('¿Eliminar?')) activeElement.remove(); } 
-        else if (action === 'edit_text') {
-            activeElement.contentEditable = true; activeElement.focus();
-            activeElement.onblur = () => { activeElement.contentEditable = false; };
-        }
-        else if (action === 'color') {
-            colorPicker.click();
-            colorPicker.oninput = () => { activeElement.style.color = colorPicker.value; };
-        }
-        else if (action === 'fit_cover') { 
-            activeElement.style.objectFit = 'cover'; 
-            activeElement.style.objectPosition = '50% 50%'; 
-            activeElement.style.transform = 'scale(1)';
-        }
-        else if (action === 'fit_contain') { 
-            activeElement.style.objectFit = 'contain'; 
-            activeElement.style.transform = 'scale(1)';
-        }
-        else if (action === 'delete_banner') { 
-            activeElement.closest('.sec-col').classList.remove('filled');
-            activeElement.remove(); 
-        }
+        else if (action === 'edit_text') { activeElement.contentEditable = true; activeElement.focus(); activeElement.onblur = () => { activeElement.contentEditable = false; }; }
+        else if (action === 'color') { colorPicker.click(); colorPicker.oninput = () => { activeElement.style.color = colorPicker.value; }; }
+        else if (action === 'fit_cover') { activeElement.style.objectFit = 'cover'; activeElement.style.objectPosition = '50% 50%'; activeElement.style.transform = 'scale(1)'; }
+        else if (action === 'fit_contain') { activeElement.style.objectFit = 'contain'; activeElement.style.transform = 'scale(1)'; }
+        else if (action === 'delete_banner') { activeElement.closest('.sec-col').classList.remove('filled'); activeElement.remove(); }
     }
 
     function deselectAll(e) {
         if (e && (e.target.closest('.resize-handle') || e.target.closest('#context-menu') || e.target.closest('.sec-tools') || e.target.closest('.header-bg-tools') || e.target.tagName === 'INPUT' || e.target.tagName === 'BUTTON')) return;
-        if (e && !e.target.closest('.sec-col')) {
-            document.querySelectorAll('.sec-col').forEach(c => c.classList.remove('active-col'));
-            activeCol = null;
-        }
-        if (e && !e.target.closest('.float-item')) {
-            document.querySelectorAll('.redimensionando').forEach(x => x.classList.remove('redimensionando'));
-        }
+        if (e && !e.target.closest('.sec-col')) { document.querySelectorAll('.sec-col').forEach(c => c.classList.remove('active-col')); activeCol = null; }
+        if (e && !e.target.closest('.float-item')) { document.querySelectorAll('.redimensionando').forEach(x => x.classList.remove('redimensionando')); }
     }
 
     function uploadImg(i) {
@@ -415,63 +379,32 @@ $smart_data = [
             r.onload = (e) => { 
                 const imgUrl = e.target.result;
                 if (activeCol) {
-                    const img = document.createElement('img');
-                    img.src = imgUrl;
-                    img.className = 'banner-img';
-                    img.setAttribute('ondragstart', 'return false;'); 
-                    activeCol.innerHTML = '';
-                    activeCol.appendChild(img);
-                    activeCol.classList.add('filled');
-                    initBannerInteraction(img);
+                    const img = document.createElement('img'); img.src = imgUrl; img.className = 'banner-img'; img.setAttribute('ondragstart', 'return false;'); 
+                    activeCol.innerHTML = ''; activeCol.appendChild(img); activeCol.classList.add('filled'); initBannerInteraction(img);
                 } else {
                     createFloat(getTargetPage(), `<img src="${imgUrl}" style="width:100%;height:100%;object-fit:contain;">`, 50, 50, 'img', '150px');
                 }
             };
-            r.readAsDataURL(i.files[0]);
-            i.value = '';
+            r.readAsDataURL(i.files[0]); i.value = '';
         }
     }
 
     function initBannerInteraction(img) {
-        let scale = 1;
-        let panning = false;
-        let startX = 0; let startY = 0;
-        
-        img.addEventListener('wheel', (e) => {
-            e.preventDefault();
-            const delta = e.deltaY * -0.001;
-            scale += delta;
-            if (scale < 0.5) scale = 0.5; if (scale > 3) scale = 3;
-            img.style.transform = `scale(${scale})`;
-        });
-
+        let scale = 1, panning = false, startX = 0, startY = 0;
+        img.addEventListener('wheel', (e) => { e.preventDefault(); scale += e.deltaY * -0.001; if (scale < 0.5) scale = 0.5; if (scale > 3) scale = 3; img.style.transform = `scale(${scale})`; });
         img.addEventListener('mousedown', (e) => {
-            if (e.button !== 0) return; 
-            e.preventDefault();
+            if (e.button !== 0) return; e.preventDefault();
             const currentPos = getComputedStyle(img).objectPosition.split(' ');
-            let posX = parseFloat(currentPos[0]) || 50;
-            let posY = parseFloat(currentPos[1]) || 50;
-            startX = e.clientX; startY = e.clientY;
-            panning = true;
-            img.style.cursor = 'grabbing';
-
+            let posX = parseFloat(currentPos[0]) || 50; let posY = parseFloat(currentPos[1]) || 50;
+            startX = e.clientX; startY = e.clientY; panning = true; img.style.cursor = 'grabbing';
             const onMouseMove = (ev) => {
                 if (!panning) return;
-                const diffX = ev.clientX - startX;
-                const diffY = ev.clientY - startY;
-                posX += (diffX * 0.1); posY += (diffY * 0.1);
-                if(posX < 0) posX = 0; if(posX > 100) posX = 100;
-                if(posY < 0) posY = 0; if(posY > 100) posY = 100;
-                img.style.objectPosition = `${posX}% ${posY}%`;
-                startX = ev.clientX; startY = ev.clientY;
+                posX += (ev.clientX - startX) * 0.1; posY += (ev.clientY - startY) * 0.1;
+                if(posX < 0) posX = 0; if(posX > 100) posX = 100; if(posY < 0) posY = 0; if(posY > 100) posY = 100;
+                img.style.objectPosition = `${posX}% ${posY}%`; startX = ev.clientX; startY = ev.clientY;
             };
-            const onMouseUp = () => {
-                panning = false; img.style.cursor = 'grab';
-                document.removeEventListener('mousemove', onMouseMove);
-                document.removeEventListener('mouseup', onMouseUp);
-            };
-            document.addEventListener('mousemove', onMouseMove);
-            document.addEventListener('mouseup', onMouseUp);
+            const onMouseUp = () => { panning = false; img.style.cursor = 'grab'; document.removeEventListener('mousemove', onMouseMove); document.removeEventListener('mouseup', onMouseUp); };
+            document.addEventListener('mousemove', onMouseMove); document.addEventListener('mouseup', onMouseUp);
         });
     }
 
@@ -480,23 +413,18 @@ $smart_data = [
         el.addEventListener('mousedown', (e) => {
             if (e.target.classList.contains('resize-handle')) return;
             if (e.button !== 0 || el.isContentEditable) return; 
-            isDown = true;
-            offX = e.clientX - el.offsetLeft * currentZoom;
-            offY = e.clientY - el.offsetTop * currentZoom;
+            isDown = true; offX = e.clientX - el.offsetLeft * currentZoom; offY = e.clientY - el.offsetTop * currentZoom;
             const p = el.closest('.page'); if(p) setActivePage(p);
         });
         window.addEventListener('mouseup', () => isDown = false);
         window.addEventListener('mousemove', (e) => {
-            if(!isDown) return;
-            e.preventDefault();
-            el.style.left = (e.clientX - offX) / currentZoom + 'px';
-            el.style.top = (e.clientY - offY) / currentZoom + 'px';
+            if(!isDown) return; e.preventDefault();
+            el.style.left = (e.clientX - offX) / currentZoom + 'px'; el.style.top = (e.clientY - offY) / currentZoom + 'px';
         });
-
         const h = document.createElement('div'); h.className = 'resize-handle'; el.appendChild(h);
         h.addEventListener('mousedown', (e) => {
             e.stopPropagation(); e.preventDefault();
-            let startX = e.clientX, startW = el.offsetWidth, startH = el.offsetHeight;
+            let startX = e.clientX, startW = el.offsetWidth;
             if (el.dataset.type === 'text' || el.dataset.type === 'sticker') {
                 const inner = el.querySelector('.inner-content > div') || el.querySelector('.inner-content');
                 if (inner && inner.style.fontSize) { el.style.fontSize = inner.style.fontSize; inner.style.fontSize = 'inherit'; }
@@ -504,49 +432,51 @@ $smart_data = [
             let startFontSize = parseFloat(window.getComputedStyle(el).fontSize) || 16;
             const onMove = (ev) => {
                 let diff = (ev.clientX - startX) / currentZoom;
-                if(el.dataset.type === 'text' || el.dataset.type === 'sticker') {
-                    let newSize = startFontSize + (diff / 3); if(newSize < 10) newSize = 10; 
-                    el.style.fontSize = newSize + 'px'; el.style.width = 'auto'; 
-                } else {
-                    let newW = startW + diff; if(newW < 20) newW = 20;
-                    el.style.width = newW + 'px'; el.style.height = 'auto';
-                }
+                if(el.dataset.type === 'text' || el.dataset.type === 'sticker') { let newSize = startFontSize + (diff / 3); if(newSize < 10) newSize = 10; el.style.fontSize = newSize + 'px'; el.style.width = 'auto'; } 
+                else { let newW = startW + diff; if(newW < 20) newW = 20; el.style.width = newW + 'px'; el.style.height = 'auto'; }
             };
             const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
             document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
         });
     }
 
+    // --- FUNCIONES DE CONSTRUCCION ---
     function addPreset(type) {
         const p = getTargetPage();
         const div = document.createElement('div'); div.className = 'section-row';
-        if (type === 'header') { div.style.minHeight = '140px'; div.style.marginBottom = '20px'; } else { div.style.minHeight = '170px'; }
+        div.style.height = '130px'; 
+        if(type==='header') div.style.marginBottom = '5px'; else div.style.marginTop = '5px';
+        
         const bgColor = (type==='header'?'#ffc400':'#f1f1f1');
         const borderB = (type==='header'?'5px solid #d50000':'none');
-        let footerBar = (type === 'footer') ? '<div style="position:absolute; top:0; left:0; width:100%; height:5px; background:#d50000; z-index:1;"></div>' : '';
+        let footerBar = (type === 'footer') ? '<div style="position:absolute; top:0; left:0; width:100%; height:4px; background:#d50000; z-index:1;"></div>' : '';
+        
         div.innerHTML = `
             ${footerBar}
             <div class="sec-bg" style="background:${bgColor}; border-bottom:${borderB}; width:100%; height:100%; position:absolute; top:0; left:0; z-index:0;"></div>
             <div class="sec-tools no-print">
-                <button class="btn-sec" onclick="moveRow(this, -1)">▲</button><button class="btn-sec" onclick="moveRow(this, 1)">▼</button><button class="btn-sec del" onclick="this.closest('.section-row').remove()">X</button>
+                <button class="btn-sec" onclick="moveRow(this, -1)" title="Subir">▲</button>
+                <button class="btn-sec" onclick="moveRow(this, 1)" title="Bajar">▼</button>
+                <button class="btn-sec del" onclick="this.closest('.section-row').remove()" title="Borrar">X</button>
             </div>
             <div class="header-bg-tools no-print">
                 <input type="color" onchange="this.closest('.section-row').querySelector('.sec-bg').style.background=this.value;">
-                <button class="btn-sec" onclick="this.nextElementSibling.click()">IMG</button><input type="file" style="display:none" accept="image/*" onchange="setBg(this)">
+                <button class="btn-sec" onclick="this.nextElementSibling.click()"><i class="bi bi-image"></i></button><input type="file" style="display:none" accept="image/*" onchange="setBg(this)">
             </div>`;
         div.style.position = 'relative';
+
         if(type === 'header') {
-            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 20, 20, 'img', '100px');
-            createFloat(div, `<div style="font-size:40px; font-weight:900; color:#d50000; text-shadow:2px 2px 0 white;">${SMART.nombre}</div>`, 140, 30, 'text');
-            createFloat(div, `<div style="font-size:20px; font-weight:bold; background:white; padding:2px 10px;">OFERTAS IMPERDIBLES</div>`, 140, 80, 'text');
+            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 15, 15, 'img', '100px');
+            createFloat(div, `<div style="font-size:38px; font-weight:900; color:#d50000; text-shadow:2px 2px 0 white;">${SMART.nombre}</div>`, 130, 25, 'text');
+            createFloat(div, `<div style="font-size:18px; font-weight:bold; background:white; padding:2px 10px;">OFERTAS IMPERDIBLES</div>`, 130, 75, 'text');
         } else if(type === 'footer') {
-            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 30, 35, 'img', '90px');
-            createFloat(div, `<div style="font-size:18px; font-weight:900; color:#333; text-transform:uppercase;">CONTACTANOS</div>`, 140, 35, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:#555; font-size:13px;"><i class="bi bi-geo-alt-fill text-danger"></i> ${SMART.direccion}</div>`, 140, 65, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:green; font-size:13px;"><i class="bi bi-whatsapp"></i> ${SMART.whatsapp}</div>`, 140, 85, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:#0d6efd; font-size:13px; margin-top:5px;"><i class="bi bi-cart4"></i> Visita nuestra tienda online:<br><span style="color:#333; font-weight:normal;">${SMART.url_tienda}</span></div>`, 140, 110, 'text');
-            createFloat(div, `<div style="background:#d50000; color:white; font-weight:900; font-size:14px; padding:8px 12px; text-align:center; transform:rotate(-3deg); box-shadow: 3px 3px 0px #333; border-radius:4px; line-height:1.2;">¡ESCANEÁ Y<br>SUMÁ PUNTOS! <i class="bi bi-arrow-right"></i></div>`, 500, 60, 'sticker');
-            createFloat(div, `<img src="${SMART.qr_img}" style="width:100%; height:100%;">`, 660, 35, 'qr', '100px');
+            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 20, 20, 'img', '90px');
+            createFloat(div, `<div style="font-size:16px; font-weight:900; color:#333; text-transform:uppercase;">CONTACTANOS</div>`, 130, 20, 'text');
+            createFloat(div, `<div style="font-weight:bold; color:#555; font-size:12px;"><i class="bi bi-geo-alt-fill text-danger"></i> ${SMART.direccion}</div>`, 130, 45, 'text');
+            createFloat(div, `<div style="font-weight:bold; color:green; font-size:12px;"><i class="bi bi-whatsapp"></i> ${SMART.whatsapp}</div>`, 130, 65, 'text');
+            createFloat(div, `<div style="font-weight:bold; color:#0d6efd; font-size:12px; margin-top:2px;"><i class="bi bi-cart4"></i> Tienda Online:<br><span style="color:#333; font-weight:normal;">${SMART.url_tienda}</span></div>`, 130, 85, 'text');
+            createFloat(div, `<div style="background:#d50000; color:white; font-weight:900; font-size:12px; padding:6px 10px; text-align:center; transform:rotate(-3deg); box-shadow: 2px 2px 0px #333; border-radius:4px; line-height:1.2;">¡ESCANEÁ Y<br>SUMÁ PUNTOS! <i class="bi bi-arrow-right"></i></div>`, 530, 45, 'sticker');
+            createFloat(div, `<img src="${SMART.qr_img}" style="width:100%; height:100%;">`, 650, 20, 'qr', '90px');
         }
         initRowResize(div); p.appendChild(div); div.scrollIntoView({behavior:'smooth'});
     }
@@ -555,11 +485,12 @@ $smart_data = [
         if(type === 'grid') {
             const p = getTargetPage();
             const div = document.createElement('div'); div.className = 'section-row';
+            div.style.height = '210px'; 
             div.innerHTML = `
             <div class="sec-tools no-print">
-                <button class="btn-sec" onclick="moveRow(this, -1)">▲</button>
-                <button class="btn-sec" onclick="moveRow(this, 1)">▼</button>
-                <button class="btn-sec del" onclick="this.closest('.section-row').remove()">X</button>
+                <button class="btn-sec" onclick="moveRow(this, -1)" title="Subir">▲</button>
+                <button class="btn-sec" onclick="moveRow(this, 1)" title="Bajar">▼</button>
+                <button class="btn-sec del" onclick="this.closest('.section-row').remove()" title="Borrar">X</button>
             </div>`;
             const grid = document.createElement('div'); grid.className = 'sec-grid';
             for(let i=0; i<cols; i++) {
@@ -649,7 +580,7 @@ $smart_data = [
     }
     
     function zoom(d) { currentZoom+=d; if(currentZoom<0.4) currentZoom=0.4; applyZoom(); }
-    function applyZoom() { document.querySelectorAll('.page').forEach(p => p.style.transform = `scale(${currentZoom})`); document.querySelectorAll('.page-wrapper').forEach(w => w.style.height = (297 * currentZoom + 40) + 'mm'); }
+    function applyZoom() { document.querySelectorAll('.page').forEach(p => p.style.transform = `scale(${currentZoom})`); document.querySelectorAll('.page-wrapper').forEach(w => w.style.height = (296 * currentZoom + 40) + 'mm'); }
     function filterProds(i) { document.querySelectorAll('.tool-item.prod-source').forEach(e => e.style.display = e.innerText.toLowerCase().includes(i.value.toLowerCase()) ? 'flex' : 'none'); }
     function setBg(inp) {
         if (inp.files[0]) {
@@ -674,11 +605,13 @@ $smart_data = [
             document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp);
         });
     }
+    
     function moveRow(btn, dir) { 
         const r = btn.closest('.section-row'); 
         if(dir===-1 && r.previousElementSibling) r.parentNode.insertBefore(r, r.previousElementSibling);
         if(dir===1 && r.nextElementSibling) r.parentNode.insertBefore(r.nextElementSibling, r);
     }
+    
     document.addEventListener('click', function(e) {
         if (!e.target.closest('#context-menu')) ctxMenu.style.display = 'none';
     });

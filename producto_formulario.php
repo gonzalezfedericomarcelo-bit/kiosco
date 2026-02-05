@@ -1,5 +1,5 @@
 <?php
-// producto_formulario.php - CON EDITOR DE IMÁGENES (CROPPER)
+// producto_formulario.php - CON CAMPO OFERTA RESTAURADO
 session_start();
 require_once 'includes/db.php';
 
@@ -27,43 +27,46 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $proveedor = $_POST['proveedor'];
     $costo = $_POST['precio_costo'];
     $venta = $_POST['precio_venta'];
+    
+    // RECUPERAMOS EL PRECIO OFERTA (Si está vacío lo pasamos a NULL)
+    $oferta = !empty($_POST['precio_oferta']) ? $_POST['precio_oferta'] : NULL;
+    
     $stock = $_POST['stock_actual'];
     $minimo = $_POST['stock_minimo'];
     $es_combo = (isset($_POST['tipo']) && $_POST['tipo'] == 'combo') ? 'combo' : 'unitario';
     
-    // MANEJO DE IMAGEN (NUEVO)
+    // MANEJO DE IMAGEN
     $imagen_final = $_POST['imagen_actual'] ?? 'default.jpg';
     
-    // Si viene una imagen recortada en Base64
     if (!empty($_POST['imagen_base64'])) {
         $data = $_POST['imagen_base64'];
-        // Quitamos la cabecera "data:image/png;base64,"
         $image_array_1 = explode(";", $data);
         $image_array_2 = explode(",", $image_array_1[1]);
         $data = base64_decode($image_array_2[1]);
         
-        // Nombre único
         $nombre_img = 'prod_' . time() . '_' . rand(100,999) . '.png';
+        
+        // Crear carpeta si no existe
+        if (!is_dir('uploads')) mkdir('uploads', 0777, true);
+        
         $ruta_destino = 'uploads/' . $nombre_img;
         
-        // Guardamos el archivo físico
         if(file_put_contents($ruta_destino, $data)) {
-            $imagen_final = $ruta_destino; // Guardamos la ruta relativa
+            $imagen_final = $ruta_destino; 
         }
     } 
-    // Si no hay recorte pero se escribió una URL manual (Compatibilidad vieja)
     elseif (!empty($_POST['imagen_url_texto'])) {
         $imagen_final = $_POST['imagen_url_texto'];
     }
 
     if ($id) {
-        // ACTUALIZAR
-        $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, precio_costo=?, precio_venta=?, stock_actual=?, stock_minimo=?, tipo=?, imagen_url=? WHERE id=?";
-        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $stock, $minimo, $es_combo, $imagen_final, $id]);
+        // ACTUALIZAR (Incluyendo precio_oferta)
+        $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, precio_costo=?, precio_venta=?, precio_oferta=?, stock_actual=?, stock_minimo=?, tipo=?, imagen_url=? WHERE id=?";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $id]);
     } else {
-        // CREAR
-        $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, stock_actual, stock_minimo, tipo, imagen_url, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
-        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $stock, $minimo, $es_combo, $imagen_final]);
+        // CREAR (Incluyendo precio_oferta)
+        $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, tipo, imagen_url, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final]);
     }
     
     header("Location: productos.php"); exit;
@@ -102,29 +105,20 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                             <div class="row g-3">
                                 <div class="col-12 text-center mb-3">
                                     <label class="form-label fw-bold d-block">Imagen del Producto</label>
-                                    
                                     <div class="mb-3">
                                         <?php 
                                             $imgShow = $producto['imagen_url'] ?? 'default.jpg';
-                                            // Si no es http, asumimos local
-                                            if(strpos($imgShow, 'http') === false && file_exists($imgShow)) {
-                                                $imgSrc = $imgShow; // Ruta local
-                                            } elseif(strpos($imgShow, 'http') !== false) {
-                                                $imgSrc = $imgShow; // URL externa vieja
-                                            } else {
-                                                $imgSrc = 'https://via.placeholder.com/150?text=Sin+Imagen';
-                                            }
+                                            if(strpos($imgShow, 'http') === false && file_exists($imgShow)) $imgSrc = $imgShow;
+                                            elseif(strpos($imgShow, 'http') !== false) $imgSrc = $imgShow;
+                                            else $imgSrc = 'https://via.placeholder.com/150?text=Sin+Imagen';
                                         ?>
                                         <img src="<?php echo $imgSrc; ?>" id="vista_previa_actual" class="img-thumbnail rounded shadow-sm" style="height: 150px; width: 150px; object-fit: contain; background: white;">
                                     </div>
-
                                     <label class="btn btn-outline-primary btn-sm fw-bold">
                                         <i class="bi bi-camera-fill"></i> Subir Foto PC
                                         <input type="file" id="inputImage" accept="image/png, image/jpeg, image/jpg" hidden>
                                     </label>
-                                    
                                     <button type="button" class="btn btn-link btn-sm text-muted" onclick="document.getElementById('divUrl').classList.toggle('d-none')">Usar URL externa</button>
-                                    
                                     <div id="divUrl" class="d-none mt-2">
                                         <input type="text" name="imagen_url_texto" class="form-control form-control-sm" placeholder="Pegar enlace HTTPS...">
                                     </div>
@@ -161,13 +155,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                     </select>
                                 </div>
 
+                                <div class="col-12"><hr></div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold text-muted">Costo ($)</label>
                                     <input type="number" step="0.01" name="precio_costo" class="form-control" value="<?php echo $producto['precio_costo'] ?? 0; ?>">
                                 </div>
                                 <div class="col-md-3">
-                                    <label class="form-label fw-bold text-success">Venta ($)</label>
+                                    <label class="form-label fw-bold text-success">Precio Venta ($)</label>
                                     <input type="number" step="0.01" name="precio_venta" class="form-control fw-bold" value="<?php echo $producto['precio_venta'] ?? 0; ?>" required>
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-danger">⚠️ Oferta ($)</label>
+                                    <input type="number" step="0.01" name="precio_oferta" class="form-control border-danger" placeholder="Opcional" value="<?php echo $producto['precio_oferta'] ?? ''; ?>">
+                                    <div class="form-text small text-danger">Si llenás esto, se cobra este precio.</div>
                                 </div>
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Stock Actual</label>
@@ -196,21 +196,16 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             <div class="modal-content">
                 <div class="modal-header bg-dark text-white">
                     <h5 class="modal-title"><i class="bi bi-crop"></i> Ajustar Imagen</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-0 text-center bg-secondary">
                     <div class="img-container">
                         <img id="imageToCrop" src="" style="max-width: 100%;">
                     </div>
                 </div>
-                <div class="modal-footer d-flex justify-content-between">
-                    <div class="text-muted small">Mové y hacé zoom para ajustar.</div>
-                    <div>
-                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                        <button type="button" class="btn btn-primary fw-bold" id="cropImageBtn">
-                            <i class="bi bi-check-lg"></i> LISTO, USAR ESTA
-                        </button>
-                    </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary fw-bold" id="cropImageBtn">LISTO</button>
                 </div>
             </div>
         </div>
@@ -218,73 +213,43 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-    
     <script>
-        // VARIABLES
         let inputImage = document.getElementById('inputImage');
         let modalElement = document.getElementById('modalCrop');
         let imageToCrop = document.getElementById('imageToCrop');
         let cropBtn = document.getElementById('cropImageBtn');
         let vistaPrevia = document.getElementById('vista_previa_actual');
         let hiddenInput = document.getElementById('imagen_base64');
-        
         let cropper;
         let modal = new bootstrap.Modal(modalElement);
 
-        // AL SELECCIONAR ARCHIVO
         inputImage.addEventListener('change', function (e) {
             let files = e.target.files;
             if (files && files.length > 0) {
                 let file = files[0];
                 let url = URL.createObjectURL(file);
-                
                 imageToCrop.src = url;
                 modal.show();
-                
-                // Limpiar input para permitir seleccionar la misma foto si se cancela
                 inputImage.value = ''; 
             }
         });
 
-        // AL ABRIR EL MODAL, INICIAR CROPPER
         modalElement.addEventListener('shown.bs.modal', function () {
             cropper = new Cropper(imageToCrop, {
-                aspectRatio: 1, // Cuadrado 1:1
-                viewMode: 1,
-                autoCropArea: 0.9,
-                dragMode: 'move',
-                background: false, // Para ver fondo
+                aspectRatio: 1, viewMode: 1, autoCropArea: 0.9, dragMode: 'move', background: false
             });
         });
 
-        // AL CERRAR MODAL, DESTRUIR CROPPER
         modalElement.addEventListener('hidden.bs.modal', function () {
-            if (cropper) {
-                cropper.destroy();
-                cropper = null;
-            }
+            if (cropper) { cropper.destroy(); cropper = null; }
         });
 
-        // AL CONFIRMAR RECORTE
         cropBtn.addEventListener('click', function () {
             if (cropper) {
-                // Obtener imagen recortada como Canvas
-                let canvas = cropper.getCroppedCanvas({
-                    width: 800,  // TAMAÑO FINAL RECOMENDADO PARA CANVA
-                    height: 800,
-                    imageSmoothingEnabled: true,
-                    imageSmoothingQuality: 'high',
-                });
-
-                // Convertir a Base64 (PNG para transparencia)
+                let canvas = cropper.getCroppedCanvas({ width: 800, height: 800, imageSmoothingEnabled: true, imageSmoothingQuality: 'high' });
                 let base64URL = canvas.toDataURL('image/png');
-                
-                // Mostrar en la vista previa
                 vistaPrevia.src = base64URL;
-                
-                // Guardar en el input oculto para enviar al servidor
                 hiddenInput.value = base64URL;
-                
                 modal.hide();
             }
         });

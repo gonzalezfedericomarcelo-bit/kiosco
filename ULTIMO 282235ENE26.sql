@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 01-02-2026 a las 13:53:31
+-- Tiempo de generación: 05-02-2026 a las 00:26:56
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -67,7 +67,9 @@ CREATE TABLE `auditoria` (
 INSERT INTO `auditoria` (`id`, `fecha`, `id_usuario`, `accion`, `detalles`) VALUES
 (1, '2026-01-29 20:52:33', 1, 'MODIF_PRODUCTO', 'Modificación Producto \'Camel Box 20\': Precio: $3200.00 -> $5200.00'),
 (2, '2026-01-29 20:52:48', 1, 'ELIMINAR_PRODUCTO', 'Eliminado: Chesterfield Box 20 (Cod: 7790000000004)'),
-(3, '2026-01-29 17:58:09', 1, 'Nueva Venta', 'Venta #4 | Total: $600 | Metodo: Efectivo');
+(3, '2026-01-29 17:58:09', 1, 'Nueva Venta', 'Venta #4 | Total: $600 | Metodo: Efectivo'),
+(4, '2026-02-03 19:19:48', 2, 'Nueva Venta', 'Venta #5 | Total: $11500 | Metodo: Efectivo'),
+(5, '2026-02-03 19:21:15', 1, 'Nueva Venta', 'Venta #6 | Total: $300 | Metodo: Efectivo');
 
 -- --------------------------------------------------------
 
@@ -122,7 +124,9 @@ INSERT INTO `cajas_sesion` (`id`, `id_usuario`, `fecha_apertura`, `fecha_cierre`
 (1, 1, '2026-01-28 22:25:26', '2026-01-28 22:26:07', 1000.00, 1000.00, 600.00, 0.00, 'cerrada'),
 (2, 1, '2026-01-28 22:26:42', '2026-01-29 06:14:22', 1000.00, 500.00, 600.00, -500.00, 'cerrada'),
 (3, 2, '2026-01-28 22:37:30', '2026-01-28 22:37:51', 0.00, 550.00, 600.00, -50.00, 'cerrada'),
-(4, 1, '2026-01-29 17:48:54', NULL, 1000.00, NULL, 0.00, NULL, 'abierta');
+(4, 1, '2026-01-29 17:48:54', '2026-02-03 19:20:54', 1000.00, 20000.00, 600.00, 18400.00, 'cerrada'),
+(5, 2, '2026-02-03 19:19:43', NULL, 2000.00, NULL, 0.00, NULL, 'abierta'),
+(6, 1, '2026-02-03 19:20:59', NULL, 1000.00, NULL, 0.00, NULL, 'abierta');
 
 -- --------------------------------------------------------
 
@@ -219,7 +223,7 @@ CREATE TABLE `configuracion` (
 --
 
 INSERT INTO `configuracion` (`id`, `nombre_negocio`, `telefono_whatsapp`, `email_notificaciones`, `direccion_local`, `color_barra_nav`, `color_botones`, `color_fondo`, `logo_url`, `modulo_clientes`, `modulo_stock`, `modulo_reportes`, `modulo_presupuesto`, `modulo_fidelizacion`, `cuit`, `mensaje_ticket`, `color_secundario`, `direccion_degradado`, `dias_alerta_vencimiento`, `dinero_por_punto`) VALUES
-(1, 'Peca\'s Store', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123', '#2754dd', '#4c83f0', '#ffffff', 'uploads/logo_1769457754.png', 1, 1, 1, 1, 1, '', '', '#6c6afb', 'to bottom', 28, 400.00);
+(1, 'Drugstore \"El 10\"', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123', NULL, NULL, NULL, 'uploads/logo_1770240392.png', 1, 1, 0, 1, 1, '', '', NULL, NULL, 28, 400.00);
 
 -- --------------------------------------------------------
 
@@ -269,7 +273,9 @@ INSERT INTO `detalle_ventas` (`id`, `id_venta`, `id_producto`, `cantidad`, `prec
 (1, 1, 8, 1.000, 600.00, 600.00),
 (2, 2, 8, 1.000, 600.00, 600.00),
 (3, 3, 8, 1.000, 600.00, 600.00),
-(4, 4, 8, 1.000, 600.00, 600.00);
+(4, 4, 8, 1.000, 600.00, 600.00),
+(5, 5, 4, 1.000, 11500.00, 11500.00),
+(6, 6, 12, 1.000, 300.00, 300.00);
 
 -- --------------------------------------------------------
 
@@ -503,7 +509,7 @@ CREATE TABLE `productos` (
 INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larga`, `id_categoria`, `id_proveedor`, `tipo`, `precio_costo`, `precio_venta`, `precio_oferta`, `stock_actual`, `stock_minimo`, `imagen_url`, `es_destacado_web`, `es_apto_celiaco`, `es_apto_vegano`, `activo`, `fecha_vencimiento`, `dias_alerta`) VALUES
 (2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 47.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767936/Coca-cola-Sabor-Original-2-25-L-1-844274.jpg', 0, 1, 1, 1, NULL, NULL),
 (3, '7790895001000', 'Coca-Cola Zero 2.25L', NULL, 1, 1, 'unitario', 1800.00, 2600.00, NULL, 12.000, 5.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767946/Coca-cola-Sabor-Original-Sin-Azucar-2-25-L-1-844284.jpg', 0, 1, 1, 1, NULL, NULL),
-(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7500.00, 11500.00, NULL, 117.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772459/Fernet-Branca-750-Cc-1-758950.jpg', 1, 1, 1, 1, NULL, NULL),
+(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7500.00, 11500.00, NULL, 116.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772459/Fernet-Branca-750-Cc-1-758950.jpg', 1, 1, 1, 1, NULL, NULL),
 (5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 900.00, 1400.00, NULL, 0.000, 24.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/772186/Cerveza-Quilmes-Clasica-Lata-473-Cc-1-21343.jpg', 1, 0, 1, 1, NULL, NULL),
 (6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 600.00, 1100.00, NULL, 53.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767784/Agua-Mineral-Sin-Gas-Villavicencio-1-5-L-1-10502.jpg', 0, 1, 1, 1, NULL, NULL),
 (7, '7791234567890', 'Monster Energy Green 473ml', NULL, 1, 1, 'unitario', 1100.00, 1800.00, NULL, 6.000, 6.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/767972/Energizante-Monster-Energy-Lata-473-Ml-1-817812.jpg', 1, 0, 1, 1, NULL, NULL),
@@ -511,7 +517,7 @@ INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larg
 (9, '7790580999999', 'Alfajor Jorgito Chocolate', NULL, 2, 1, 'unitario', 600.00, 1000.00, NULL, 39.000, 12.000, 'https://acdn.mitiendanube.com/stores/001/151/835/products/jorgito-negro1-1033c5e884e1b4334f15886245366657-640-0.jpg', 0, 0, 0, 1, NULL, NULL),
 (10, '7790060023654', 'Chocolate Milka Leger 100g', NULL, 2, 1, 'unitario', 1500.00, 2500.00, NULL, 28.000, 5.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/771038/Chocolate-Con-Leche-Aireado-Milka-Leger-45-Gr-1-766723.jpg', 0, 1, 0, 1, NULL, NULL),
 (11, '7790456000021', 'Pastillas DRF Menta', NULL, 2, 1, 'unitario', 200.00, 400.00, NULL, 96.000, 10.000, 'https://acdn.mitiendanube.com/stores/001/214/563/products/drf-menta1-2d744b13a7c36a461315925049363063-640-0.jpg', 0, 1, 1, 1, NULL, NULL),
-(12, '7791111222233', 'Turrón Arcor Misky', NULL, 2, 1, 'unitario', 150.00, 300.00, NULL, 499.000, 50.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/151/835/products/turron-arcor1-e0c5112df380a9967115886256248386-640-0.jpg', 0, 0, 1, 1, NULL, NULL),
+(12, '7791111222233', 'Turrón Arcor Misky', NULL, 2, 1, 'unitario', 150.00, 300.00, NULL, 498.000, 50.000, 'https://d2r9epyceweg5n.cloudfront.net/stores/001/151/835/products/turron-arcor1-e0c5112df380a9967115886256248386-640-0.jpg', 0, 0, 1, 1, NULL, NULL),
 (13, '7790999000111', 'Chicle Beldent Menta 8u', NULL, 2, 1, 'unitario', 400.00, 800.00, NULL, 59.000, 20.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/769739/Chicles-Beldent-Menta-8-Un-1-4770.jpg', 1, 1, 1, 1, NULL, NULL),
 (14, '7790040866666', 'Papas Fritas Lays Clásicas 85g', NULL, 3, 1, 'unitario', 1200.00, 2100.00, NULL, 10.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/770289/Papas-Fritas-Lays-Clasicas-85-Gr-1-235122.jpg', 0, 1, 1, 1, NULL, NULL),
 (15, '7790040855555', 'Doritos Queso 85g', NULL, 3, 1, 'unitario', 1300.00, 2300.00, NULL, 3.000, 10.000, 'https://jumboargentina.vtexassets.com/arquivos/ids/770271/Snack-Doritos-Sabor-Queso-94-Gr-1-12797.jpg', 0, 0, 0, 1, NULL, NULL),
@@ -558,6 +564,63 @@ INSERT INTO `proveedores` (`id`, `empresa`, `contacto`, `telefono`, `cuit`, `ema
 (1, 'Coca-Cola Oficial', 'Juan Repartidor', NULL, NULL, NULL, 'Lunes'),
 (2, 'Mayorista Arcoiris', 'Pedro Ventas', NULL, NULL, NULL, 'Jueves'),
 (3, 'La Serenísima', 'Carlos Leche', NULL, NULL, NULL, 'Martes');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `revista_config`
+--
+
+CREATE TABLE `revista_config` (
+  `id` int(11) NOT NULL,
+  `titulo_tapa` varchar(255) DEFAULT 'CATÁLOGO',
+  `subtitulo_tapa` varchar(255) DEFAULT 'INTERACTIVO',
+  `img_tapa` varchar(255) DEFAULT NULL,
+  `img_bienvenida` varchar(255) DEFAULT NULL,
+  `texto_bienvenida_titulo` varchar(100) DEFAULT '¡Hola Vecino!',
+  `texto_bienvenida_cuerpo` text DEFAULT NULL,
+  `tapa_banner_color` varchar(20) DEFAULT '#ffffff',
+  `tapa_banner_opacity` decimal(3,2) DEFAULT 0.90,
+  `bienv_bg_color` varchar(20) DEFAULT '#ffffff',
+  `tapa_overlay` decimal(3,2) DEFAULT 0.40,
+  `tapa_tit_color` varchar(20) DEFAULT '#ffde00',
+  `tapa_sub_color` varchar(20) DEFAULT '#ffffff',
+  `bienv_overlay` decimal(3,2) DEFAULT 0.00,
+  `bienv_tit_color` varchar(20) DEFAULT '#333333',
+  `bienv_txt_color` varchar(20) DEFAULT '#555555',
+  `fuente_global` varchar(50) DEFAULT 'Poppins'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `revista_config`
+--
+
+INSERT INTO `revista_config` (`id`, `titulo_tapa`, `subtitulo_tapa`, `img_tapa`, `img_bienvenida`, `texto_bienvenida_titulo`, `texto_bienvenida_cuerpo`, `tapa_banner_color`, `tapa_banner_opacity`, `bienv_bg_color`, `tapa_overlay`, `tapa_tit_color`, `tapa_sub_color`, `bienv_overlay`, `bienv_tit_color`, `bienv_txt_color`, `fuente_global`) VALUES
+(1, 'CATÁLOGO', 'INTERACTIVO', 'img/revista/1770241009_tapa_WhatsApp Image 2026-02-03 at 22.12.02.jpeg', 'img/revista/1770241601_bienv_Yellow Colorful Creative Abstract Welcome Banner.jpg', '¡Hola Vecino!', 'Mirá todo lo rico que llegó esta semana.', '#ffffff', 0.00, '#3c54b4', 0.40, '#ffde00', '#ffffff', 0.00, '#333333', '#555555', 'Poppins');
+
+-- --------------------------------------------------------
+
+--
+-- Estructura de tabla para la tabla `revista_paginas`
+--
+
+CREATE TABLE `revista_paginas` (
+  `id` int(11) NOT NULL,
+  `nombre_referencia` varchar(100) DEFAULT NULL,
+  `posicion` int(11) DEFAULT 5,
+  `imagen_url` varchar(255) DEFAULT NULL,
+  `boton_texto` varchar(50) DEFAULT NULL,
+  `boton_link` varchar(255) DEFAULT NULL,
+  `activa` tinyint(4) DEFAULT 1
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `revista_paginas`
+--
+
+INSERT INTO `revista_paginas` (`id`, `nombre_referencia`, `posicion`, `imagen_url`, `boton_texto`, `boton_link`, `activa`) VALUES
+(1, '1', 4, 'img/revista/1770241671_valentin.jpg', 'Ver regalos', 'google.com', 1),
+(2, '2', 8, 'img/revista/1770242547_ads_Beige And Red Illustrative Summer Sale Your Story.jpg', 'Boton', 'link.com', 1);
 
 -- --------------------------------------------------------
 
@@ -689,7 +752,9 @@ INSERT INTO `ventas` (`id`, `codigo_ticket`, `id_caja_sesion`, `id_usuario`, `id
 (1, NULL, 1, 1, 1, '2026-01-28 22:25:30', 600.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (2, NULL, 3, 2, 1, '2026-01-28 22:37:39', 600.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (3, NULL, 2, 1, 3, '2026-01-29 06:14:11', 600.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
-(4, NULL, 4, 1, 1, '2026-01-29 17:58:09', 600.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
+(4, NULL, 4, 1, 1, '2026-01-29 17:58:09', 600.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(5, NULL, 5, 2, 1, '2026-02-03 19:19:48', 11500.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(6, NULL, 6, 1, 3, '2026-02-03 19:21:15', 300.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
 
 --
 -- Índices para tablas volcadas
@@ -838,6 +903,18 @@ ALTER TABLE `proveedores`
   ADD PRIMARY KEY (`id`);
 
 --
+-- Indices de la tabla `revista_config`
+--
+ALTER TABLE `revista_config`
+  ADD PRIMARY KEY (`id`);
+
+--
+-- Indices de la tabla `revista_paginas`
+--
+ALTER TABLE `revista_paginas`
+  ADD PRIMARY KEY (`id`);
+
+--
 -- Indices de la tabla `roles`
 --
 ALTER TABLE `roles`
@@ -882,7 +959,7 @@ ALTER TABLE `afip_config`
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=4;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=6;
 
 --
 -- AUTO_INCREMENT de la tabla `bienes_uso`
@@ -894,7 +971,7 @@ ALTER TABLE `bienes_uso`
 -- AUTO_INCREMENT de la tabla `cajas_sesion`
 --
 ALTER TABLE `cajas_sesion`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT de la tabla `categorias`
@@ -918,7 +995,7 @@ ALTER TABLE `cupones`
 -- AUTO_INCREMENT de la tabla `detalle_ventas`
 --
 ALTER TABLE `detalle_ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- AUTO_INCREMENT de la tabla `devoluciones`
@@ -987,6 +1064,18 @@ ALTER TABLE `proveedores`
   MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
+-- AUTO_INCREMENT de la tabla `revista_config`
+--
+ALTER TABLE `revista_config`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+
+--
+-- AUTO_INCREMENT de la tabla `revista_paginas`
+--
+ALTER TABLE `revista_paginas`
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
+
+--
 -- AUTO_INCREMENT de la tabla `roles`
 --
 ALTER TABLE `roles`
@@ -1002,7 +1091,7 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `ventas`
 --
 ALTER TABLE `ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=5;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
 
 --
 -- Restricciones para tablas volcadas

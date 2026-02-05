@@ -1,72 +1,72 @@
 <?php
-// producto_formulario.php - CON AUDITORÍA (Diseño Original Intacto)
+// producto_formulario.php - CON EDITOR DE IMÁGENES (CROPPER)
 session_start();
 require_once 'includes/db.php';
 
-// SEGURIDAD
-if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] > 2) {
-    header("Location: dashboard.php?error=acceso_denegado");
-    exit;
-}
+if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
 $id = $_GET['id'] ?? null;
 $producto = null;
-$mensaje_exito = false;
 
-// CARGAR DATOS SI ES EDICIÓN
+// Lógica para cargar datos si es edición
 if ($id) {
     $stmt = $conexion->prepare("SELECT * FROM productos WHERE id = ?");
     $stmt->execute([$id]);
-    $producto = $stmt->fetch();
+    $producto = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-$categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
-$proveedores = $conexion->query("SELECT * FROM proveedores")->fetchAll();
+// OBTENER CATEGORÍAS Y PROVEEDORES
+$categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll(PDO::FETCH_ASSOC);
+$proveedores = $conexion->query("SELECT * FROM proveedores")->fetchAll(PDO::FETCH_ASSOC);
 
-// PROCESAR GUARDADO
-// PROCESAR GUARDADO
+// PROCESAR FORMULARIO
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    $codigo = $_POST['codigo_barras'];
-    $desc = $_POST['descripcion'];
-    $cat = $_POST['id_categoria'];
-    $prov = $_POST['id_proveedor'];
+    $codigo = $_POST['codigo'];
+    $descripcion = $_POST['descripcion'];
+    $categoria = $_POST['categoria'];
+    $proveedor = $_POST['proveedor'];
     $costo = $_POST['precio_costo'];
     $venta = $_POST['precio_venta'];
-    // NUEVO: Capturar precio oferta
-    $oferta = !empty($_POST['precio_oferta']) ? $_POST['precio_oferta'] : null;
-    
     $stock = $_POST['stock_actual'];
     $minimo = $_POST['stock_minimo'];
-    $img = $_POST['imagen_url'];
+    $es_combo = (isset($_POST['tipo']) && $_POST['tipo'] == 'combo') ? 'combo' : 'unitario';
     
-    $vencimiento = !empty($_POST['fecha_vencimiento']) ? $_POST['fecha_vencimiento'] : null;
-    $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : null;
+    // MANEJO DE IMAGEN (NUEVO)
+    $imagen_final = $_POST['imagen_actual'] ?? 'default.jpg';
     
-    $web = isset($_POST['es_destacado_web']) ? 1 : 0;
-    $celiaco = isset($_POST['es_apto_celiaco']) ? 1 : 0;
-    $vegano = isset($_POST['es_apto_vegano']) ? 1 : 0;
-
-    try {
-        if ($id) {
-            // ACTUALIZAR (Incluye precio_oferta)
-            $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, 
-                    precio_costo=?, precio_venta=?, precio_oferta=?, stock_actual=?, stock_minimo=?, imagen_url=?, 
-                    fecha_vencimiento=?, dias_alerta=?, es_destacado_web=?, es_apto_celiaco=?, es_apto_vegano=? WHERE id=?";
-            $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $oferta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano, $id]);
-        } else {
-            // CREAR (Incluye precio_oferta)
-            $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, 
-                    precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, imagen_url, fecha_vencimiento, dias_alerta,
-                    es_destacado_web, es_apto_celiaco, es_apto_vegano) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
-            $stmt = $conexion->prepare($sql);
-            $stmt->execute([$codigo, $desc, $cat, $prov, $costo, $venta, $oferta, $stock, $minimo, $img, $vencimiento, $dias_alerta, $web, $celiaco, $vegano]);
+    // Si viene una imagen recortada en Base64
+    if (!empty($_POST['imagen_base64'])) {
+        $data = $_POST['imagen_base64'];
+        // Quitamos la cabecera "data:image/png;base64,"
+        $image_array_1 = explode(";", $data);
+        $image_array_2 = explode(",", $image_array_1[1]);
+        $data = base64_decode($image_array_2[1]);
+        
+        // Nombre único
+        $nombre_img = 'prod_' . time() . '_' . rand(100,999) . '.png';
+        $ruta_destino = 'uploads/' . $nombre_img;
+        
+        // Guardamos el archivo físico
+        if(file_put_contents($ruta_destino, $data)) {
+            $imagen_final = $ruta_destino; // Guardamos la ruta relativa
         }
-        $mensaje_exito = true;
-    } catch (PDOException $e) {
-        $error = "Error en base de datos: " . $e->getMessage();
+    } 
+    // Si no hay recorte pero se escribió una URL manual (Compatibilidad vieja)
+    elseif (!empty($_POST['imagen_url_texto'])) {
+        $imagen_final = $_POST['imagen_url_texto'];
     }
+
+    if ($id) {
+        // ACTUALIZAR
+        $sql = "UPDATE productos SET codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, precio_costo=?, precio_venta=?, stock_actual=?, stock_minimo=?, tipo=?, imagen_url=? WHERE id=?";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $stock, $minimo, $es_combo, $imagen_final, $id]);
+    } else {
+        // CREAR
+        $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, stock_actual, stock_minimo, tipo, imagen_url, activo) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)";
+        $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $stock, $minimo, $es_combo, $imagen_final]);
+    }
+    
+    header("Location: productos.php"); exit;
 }
 ?>
 <!DOCTYPE html>
@@ -74,142 +74,115 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Gestión de Producto</title>
+    <title><?php echo $id ? 'Editar' : 'Nuevo'; ?> Producto</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet">
     <style>
-        body { background-color: #f0f2f5; font-family: 'Segoe UI', sans-serif; }
-        .card { border-radius: 15px; border: none; box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
-        .card-header { background: white; border-bottom: 1px solid #eee; padding: 20px; border-radius: 15px 15px 0 0 !important; }
-        .form-label { font-weight: 600; font-size: 0.9rem; color: #555; }
-        .btn-guardar { padding: 12px 30px; font-weight: bold; letter-spacing: 0.5px; }
+        .img-container { max-height: 500px; display: block; }
+        .preview-box { width: 200px; height: 200px; overflow: hidden; border: 2px dashed #ccc; margin: 0 auto; background: #f8f9fa; display: flex; align-items: center; justify-content: center; }
+        .preview-img { max-width: 100%; max-height: 100%; }
     </style>
 </head>
-<body>
-    <div class="container py-5">
+<body class="bg-light">
+    <?php include 'includes/menu.php'; ?>
+
+    <div class="container pb-5">
         <div class="row justify-content-center">
-            <div class="col-lg-10">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <h4 class="mb-0 text-primary fw-bold">
-                            <?php echo $id ? '✏️ Editar Producto' : '✨ Nuevo Producto'; ?>
-                        </h4>
-                        <a href="productos.php" class="btn btn-outline-secondary btn-sm">Cancelar y Volver</a>
+            <div class="col-lg-8">
+                <div class="card shadow border-0">
+                    <div class="card-header bg-primary text-white fw-bold">
+                        <?php echo $id ? '✏️ Editar Producto' : '✨ Nuevo Producto'; ?>
                     </div>
                     <div class="card-body p-4">
-                        <form method="POST" id="formProducto">
+                        <form method="POST" enctype="multipart/form-data" id="formProducto">
                             
-                            <h6 class="text-uppercase text-muted mb-3 small fw-bold">Información Básica</h6>
-                            <div class="row g-3 mb-4">
-                                <div class="col-md-4">
-                                    <label class="form-label">Código de Barras</label>
-                                    <input type="text" class="form-control" name="codigo_barras" 
-                                           value="<?php echo $producto->codigo_barras ?? ''; ?>" autofocus required>
+                            <input type="hidden" name="imagen_actual" value="<?php echo $producto['imagen_url'] ?? 'default.jpg'; ?>">
+                            <input type="hidden" name="imagen_base64" id="imagen_base64">
+
+                            <div class="row g-3">
+                                <div class="col-12 text-center mb-3">
+                                    <label class="form-label fw-bold d-block">Imagen del Producto</label>
+                                    
+                                    <div class="mb-3">
+                                        <?php 
+                                            $imgShow = $producto['imagen_url'] ?? 'default.jpg';
+                                            // Si no es http, asumimos local
+                                            if(strpos($imgShow, 'http') === false && file_exists($imgShow)) {
+                                                $imgSrc = $imgShow; // Ruta local
+                                            } elseif(strpos($imgShow, 'http') !== false) {
+                                                $imgSrc = $imgShow; // URL externa vieja
+                                            } else {
+                                                $imgSrc = 'https://via.placeholder.com/150?text=Sin+Imagen';
+                                            }
+                                        ?>
+                                        <img src="<?php echo $imgSrc; ?>" id="vista_previa_actual" class="img-thumbnail rounded shadow-sm" style="height: 150px; width: 150px; object-fit: contain; background: white;">
+                                    </div>
+
+                                    <label class="btn btn-outline-primary btn-sm fw-bold">
+                                        <i class="bi bi-camera-fill"></i> Subir Foto PC
+                                        <input type="file" id="inputImage" accept="image/png, image/jpeg, image/jpg" hidden>
+                                    </label>
+                                    
+                                    <button type="button" class="btn btn-link btn-sm text-muted" onclick="document.getElementById('divUrl').classList.toggle('d-none')">Usar URL externa</button>
+                                    
+                                    <div id="divUrl" class="d-none mt-2">
+                                        <input type="text" name="imagen_url_texto" class="form-control form-control-sm" placeholder="Pegar enlace HTTPS...">
+                                    </div>
                                 </div>
-                                <div class="col-md-8">
-                                    <label class="form-label">Nombre / Descripción</label>
-                                    <input type="text" class="form-control" name="descripcion" 
-                                           value="<?php echo $producto->descripcion ?? ''; ?>" required>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Código de Barras</label>
+                                    <input type="text" name="codigo" class="form-control" value="<?php echo $producto['codigo_barras'] ?? ''; ?>" required>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Categoría</label>
-                                    <select class="form-select" name="id_categoria" required>
-                                        <option value="">Seleccionar...</option>
+                                    <label class="form-label fw-bold">Descripción / Nombre</label>
+                                    <input type="text" name="descripcion" class="form-control" value="<?php echo $producto['descripcion'] ?? ''; ?>" required>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <label class="form-label fw-bold">Categoría</label>
+                                    <select name="categoria" class="form-select">
                                         <?php foreach($categorias as $c): ?>
-                                            <option value="<?php echo $c->id; ?>" <?php if(($producto->id_categoria ?? 0) == $c->id) echo 'selected'; ?>>
-                                                <?php echo $c->nombre; ?>
+                                            <option value="<?php echo $c['id']; ?>" <?php echo ($producto && $producto['id_categoria'] == $c['id']) ? 'selected' : ''; ?>>
+                                                <?php echo $c['nombre']; ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
                                 <div class="col-md-6">
-                                    <label class="form-label">Proveedor</label>
-                                    <select class="form-select" name="id_proveedor">
-                                        <option value="">Seleccionar...</option>
+                                    <label class="form-label fw-bold">Proveedor</label>
+                                    <select name="proveedor" class="form-select">
+                                        <option value="">-- Seleccionar --</option>
                                         <?php foreach($proveedores as $p): ?>
-                                            <option value="<?php echo $p->id; ?>" <?php if(($producto->id_proveedor ?? 0) == $p->id) echo 'selected'; ?>>
-                                                <?php echo $p->empresa; ?>
+                                            <option value="<?php echo $p['id']; ?>" <?php echo ($producto && $producto['id_proveedor'] == $p['id']) ? 'selected' : ''; ?>>
+                                                <?php echo $p['empresa']; ?>
                                             </option>
                                         <?php endforeach; ?>
                                     </select>
                                 </div>
-                            </div>
 
-                            <hr class="text-muted opacity-25">
-
-                            <h6 class="text-uppercase text-muted mb-3 small fw-bold">Inventario y Finanzas</h6>
-                            <div class="row g-3 mb-4">
-                                <div class="col-md-2">
-                                    <label class="form-label text-muted">Costo ($)</label>
-                                    <input type="number" step="0.01" class="form-control bg-light" name="precio_costo" 
-                                           value="<?php echo $producto->precio_costo ?? ''; ?>" required>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-muted">Costo ($)</label>
+                                    <input type="number" step="0.01" name="precio_costo" class="form-control" value="<?php echo $producto['precio_costo'] ?? 0; ?>">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-success">Venta ($)</label>
-                                    <input type="number" step="0.01" class="form-control border-success" name="precio_venta" 
-                                           value="<?php echo $producto->precio_venta ?? ''; ?>" required>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-success">Venta ($)</label>
+                                    <input type="number" step="0.01" name="precio_venta" class="form-control fw-bold" value="<?php echo $producto['precio_venta'] ?? 0; ?>" required>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-danger fw-bold">¡Oferta! ($)</label>
-                                    <input type="number" step="0.01" class="form-control border-danger bg-light" name="precio_oferta" 
-                                           value="<?php echo $producto->precio_oferta ?? ''; ?>" placeholder="Opcional">
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold">Stock Actual</label>
+                                    <input type="number" step="0.01" name="stock_actual" class="form-control" value="<?php echo $producto['stock_actual'] ?? 0; ?>">
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label">Stock Real</label>
-                                    <input type="number" step="0.001" class="form-control fw-bold" name="stock_actual" 
-                                           value="<?php echo $producto->stock_actual ?? ''; ?>">
-                                </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-danger">Mínimo</label>
-                                    <input type="number" step="0.001" class="form-control" name="stock_minimo" 
-                                           value="<?php echo $producto->stock_minimo ?? '5'; ?>">
+                                <div class="col-md-3">
+                                    <label class="form-label small">Stock Mínimo</label>
+                                    <input type="number" step="0.01" name="stock_minimo" class="form-control" value="<?php echo $producto['stock_minimo'] ?? 5; ?>">
                                 </div>
                                 
-                                <div class="col-md-2">
-                                    <label class="form-label text-warning">Vencimiento</label>
-                                    <input type="date" class="form-control border-warning" name="fecha_vencimiento" 
-                                           value="<?php echo $producto->fecha_vencimiento ?? ''; ?>">
+                                <div class="col-12 mt-4">
+                                    <button type="submit" class="btn btn-primary w-100 py-3 fw-bold shadow-sm">
+                                        <i class="bi bi-save"></i> GUARDAR PRODUCTO
+                                    </button>
                                 </div>
-                                <div class="col-md-2">
-                                    <label class="form-label text-warning" style="font-size: 0.8rem;">Avisar (Días)</label>
-                                    <input type="number" class="form-control" name="dias_alerta" 
-                                           value="<?php echo $producto->dias_alerta ?? ''; ?>" placeholder="Global">
-                                </div>
-                            </div>
-
-                            <hr class="text-muted opacity-25">
-
-                            <h6 class="text-uppercase text-muted mb-3 small fw-bold">Configuración Góndola Web</h6>
-                            <div class="row g-3">
-                                <div class="col-md-12">
-                                    <label class="form-label">URL Imagen</label>
-                                    <input type="text" class="form-control" name="imagen_url" 
-                                           value="<?php echo $producto->imagen_url ?? ''; ?>" placeholder="https://...">
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-check form-switch p-2 border rounded">
-                                        <input class="form-check-input ms-0 me-2" type="checkbox" name="es_destacado_web" <?php if($producto->es_destacado_web ?? 0) echo 'checked'; ?>>
-                                        <label class="form-check-label">Destacar en Portada</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-check form-switch p-2 border rounded">
-                                        <input class="form-check-input ms-0 me-2" type="checkbox" name="es_apto_celiaco" <?php if($producto->es_apto_celiaco ?? 0) echo 'checked'; ?>>
-                                        <label class="form-check-label">Apto Celíaco</label>
-                                    </div>
-                                </div>
-                                <div class="col-md-4">
-                                    <div class="form-check form-switch p-2 border rounded">
-                                        <input class="form-check-input ms-0 me-2" type="checkbox" name="es_apto_vegano" <?php if($producto->es_apto_vegano ?? 0) echo 'checked'; ?>>
-                                        <label class="form-check-label">Apto Vegano</label>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="mt-5 text-end">
-                                <button type="submit" class="btn btn-primary btn-guardar shadow">
-                                    <i class="bi bi-check-lg"></i> GUARDAR CAMBIOS
-                                </button>
                             </div>
                         </form>
                     </div>
@@ -218,27 +191,103 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         </div>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <div class="modal fade" id="modalCrop" tabindex="-1" data-bs-backdrop="static">
+        <div class="modal-dialog modal-lg modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-dark text-white">
+                    <h5 class="modal-title"><i class="bi bi-crop"></i> Ajustar Imagen</h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body p-0 text-center bg-secondary">
+                    <div class="img-container">
+                        <img id="imageToCrop" src="" style="max-width: 100%;">
+                    </div>
+                </div>
+                <div class="modal-footer d-flex justify-content-between">
+                    <div class="text-muted small">Mové y hacé zoom para ajustar.</div>
+                    <div>
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                        <button type="button" class="btn btn-primary fw-bold" id="cropImageBtn">
+                            <i class="bi bi-check-lg"></i> LISTO, USAR ESTA
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    
     <script>
-        <?php if($mensaje_exito): ?>
-        Swal.fire({
-            title: '¡Perfecto!',
-            text: 'El producto se ha guardado correctamente.',
-            icon: 'success',
-            confirmButtonText: 'Genial',
-            confirmButtonColor: '#0d6efd'
-        }).then((result) => {
-            if (result.isConfirmed) {
-                window.location = 'productos.php';
+        // VARIABLES
+        let inputImage = document.getElementById('inputImage');
+        let modalElement = document.getElementById('modalCrop');
+        let imageToCrop = document.getElementById('imageToCrop');
+        let cropBtn = document.getElementById('cropImageBtn');
+        let vistaPrevia = document.getElementById('vista_previa_actual');
+        let hiddenInput = document.getElementById('imagen_base64');
+        
+        let cropper;
+        let modal = new bootstrap.Modal(modalElement);
+
+        // AL SELECCIONAR ARCHIVO
+        inputImage.addEventListener('change', function (e) {
+            let files = e.target.files;
+            if (files && files.length > 0) {
+                let file = files[0];
+                let url = URL.createObjectURL(file);
+                
+                imageToCrop.src = url;
+                modal.show();
+                
+                // Limpiar input para permitir seleccionar la misma foto si se cancela
+                inputImage.value = ''; 
             }
         });
-        <?php endif; ?>
 
-        <?php if(isset($error)): ?>
-        Swal.fire({ title: 'Error', text: '<?php echo $error; ?>', icon: 'error' });
-        <?php endif; ?>
+        // AL ABRIR EL MODAL, INICIAR CROPPER
+        modalElement.addEventListener('shown.bs.modal', function () {
+            cropper = new Cropper(imageToCrop, {
+                aspectRatio: 1, // Cuadrado 1:1
+                viewMode: 1,
+                autoCropArea: 0.9,
+                dragMode: 'move',
+                background: false, // Para ver fondo
+            });
+        });
+
+        // AL CERRAR MODAL, DESTRUIR CROPPER
+        modalElement.addEventListener('hidden.bs.modal', function () {
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+        });
+
+        // AL CONFIRMAR RECORTE
+        cropBtn.addEventListener('click', function () {
+            if (cropper) {
+                // Obtener imagen recortada como Canvas
+                let canvas = cropper.getCroppedCanvas({
+                    width: 800,  // TAMAÑO FINAL RECOMENDADO PARA CANVA
+                    height: 800,
+                    imageSmoothingEnabled: true,
+                    imageSmoothingQuality: 'high',
+                });
+
+                // Convertir a Base64 (PNG para transparencia)
+                let base64URL = canvas.toDataURL('image/png');
+                
+                // Mostrar en la vista previa
+                vistaPrevia.src = base64URL;
+                
+                // Guardar en el input oculto para enviar al servidor
+                hiddenInput.value = base64URL;
+                
+                modal.hide();
+            }
+        });
     </script>
 </body>
 </html>

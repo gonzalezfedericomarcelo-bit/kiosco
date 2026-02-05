@@ -1,5 +1,5 @@
 <?php
-// tienda.php - VERSIÓN FINAL: GRILLA CLÁSICA + BOTONES REVISTA Y PDF
+// tienda.php - VERSIÓN FINAL: GRILLA CLÁSICA + BOTÓN REVISTA (PDF ELIMINADO)
 require_once 'includes/db.php';
 
 // CONFIGURACIÓN
@@ -101,8 +101,7 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
         
         <div class="d-flex justify-content-center gap-2 mt-3">
             <a href="revista.php" class="btn btn-warning fw-bold rounded-pill shadow-sm text-dark"><i class="bi bi-book-half"></i> Ver Revista</a>
-            <a href="catalogo_pdf.php" target="_blank" class="btn btn-outline-light fw-bold rounded-pill shadow-sm"><i class="bi bi-file-earmark-pdf-fill"></i> Descargar PDF</a>
-        </div>
+            </div>
     </div>
 
     <div class="container mb-3">

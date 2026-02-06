@@ -1,82 +1,85 @@
 <?php
-// registro_cliente.php - CORREGIDO: Session Fix + Asignación Forzada de Puntos
+// registro_cliente.php - INTEGRACIÓN TOTAL CON PUNTOS POR QR
 session_start();
 require_once 'includes/db.php';
 
-// Si ya está logueado, ir directo a la tienda
+// 1. Si el cliente ya está logueado, lo mandamos a la tienda
 if (isset($_SESSION['cliente_id'])) { 
     header("Location: tienda.php"); 
     exit; 
 }
 
-$ref_venta = isset($_GET['ref_venta']) ? intval($_GET['ref_venta']) : 0;
+// 2. Capturamos la referencia de venta del QR
+$ref_venta = isset($_GET['ref_venta']) ? intval($_GET['ref_venta']) : (isset($_POST['ref_venta_hidden']) ? intval($_POST['ref_venta_hidden']) : 0);
 $mensaje_exito = "";
 $puntos_ganados = 0;
+$error = "";
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $nombre = trim($_POST['nombre']);
     $dni = trim($_POST['dni']);
     $telefono = trim($_POST['telefono']);
     $password = $_POST['password'];
-    $venta_a_reclamar = isset($_POST['ref_venta_hidden']) ? intval($_POST['ref_venta_hidden']) : 0;
 
     if (empty($nombre) || empty($dni) || empty($password)) {
-        $error = "Faltan datos obligatorios.";
+        $error = "Faltan datos obligatorios (Nombre, DNI y Contraseña).";
     } else {
-        // Verificar si DNI ya existe
+        // Verificar si el DNI ya existe
         $stmtCheck = $conexion->prepare("SELECT id FROM clientes WHERE dni = ?");
         $stmtCheck->execute([$dni]);
+        
         if ($stmtCheck->rowCount() > 0) {
-            $error = "El DNI ya está registrado. Intenta iniciar sesión.";
+            $error = "El DNI ya está registrado. Por favor, inicia sesión.";
         } else {
             try {
                 $conexion->beginTransaction();
 
-                // 1. CREAR CLIENTE (Usamos la columna 'direccion' que YA EXISTE en tu base)
+                // A. Crear el nuevo cliente
                 $hash = password_hash($password, PASSWORD_DEFAULT);
-                // NOTA: No insertamos dirección aquí para hacerlo rápido, se edita en el perfil
                 $stmt = $conexion->prepare("INSERT INTO clientes (nombre, dni, telefono, password, puntos_acumulados, fecha_registro) VALUES (?, ?, ?, ?, 0, NOW())");
                 $stmt->execute([$nombre, $dni, $telefono, $hash]);
                 $nuevo_cliente_id = $conexion->lastInsertId();
 
-                // 2. ASIGNAR VENTA Y PUNTOS
-                if ($venta_a_reclamar > 0) {
-                    $stmtVenta = $conexion->prepare("SELECT total FROM ventas WHERE id = ?");
-                    $stmtVenta->execute([$venta_a_reclamar]);
+                // B. LÓGICA DE PUNTOS POR TICKET (Solo una vez)
+                if ($ref_venta > 0) {
+                    // Buscamos la venta y verificamos que el id_cliente sea 1 (Consumidor Final)
+                    // Esto garantiza que el ticket no haya sido usado antes por otro cliente registrado
+                    $stmtVenta = $conexion->prepare("SELECT total, id_cliente FROM ventas WHERE id = ?");
+                    $stmtVenta->execute([$ref_venta]);
                     $venta = $stmtVenta->fetch(PDO::FETCH_ASSOC);
 
-                    if ($venta) {
-                        // FORZAMOS la venta al nuevo cliente (Corrección para que funcione tu prueba)
-                        $conexion->prepare("UPDATE ventas SET id_cliente = ? WHERE id = ?")->execute([$nuevo_cliente_id, $venta_a_reclamar]);
+                    if ($venta && $venta['id_cliente'] == 1) {
+                        // 1. Asignamos la venta al nuevo cliente
+                        $conexion->prepare("UPDATE ventas SET id_cliente = ? WHERE id = ?")->execute([$nuevo_cliente_id, $ref_venta]);
 
-                        // Calcular puntos (400 pesos = 1 punto según tu configuración)
+                        // 2. Calculamos los puntos (usando tu ratio de la config)
                         $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-                        $ratio = ($conf && $conf['dinero_por_punto'] > 0) ? $conf['dinero_por_punto'] : 400;
+                        $ratio = ($conf && $conf['dinero_por_punto'] > 0) ? $conf['dinero_por_punto'] : 100;
                         
                         $puntos_ganados = floor($venta['total'] / $ratio);
                         
                         if ($puntos_ganados > 0) {
+                            // Sumamos los puntos al cliente
                             $conexion->prepare("UPDATE clientes SET puntos_acumulados = puntos_acumulados + ? WHERE id = ?")->execute([$puntos_ganados, $nuevo_cliente_id]);
                             
-                            // Guardar historial
-                            $desc = "Puntos recuperados Ticket #" . $venta_a_reclamar;
-                            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, tipo, monto, descripcion, fecha) VALUES (?, 'haber', 0, ?, NOW())")->execute([$nuevo_cliente_id, $desc]);
+                            // Registramos el movimiento
+                            $desc_mov = "Puntos recuperados de Ticket #" . $ref_venta;
+                            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, tipo, monto, descripcion, fecha) VALUES (?, ?, 'puntos', 0, ?, NOW())")
+                                     ->execute([$nuevo_cliente_id, $ref_venta, $desc_mov]);
                         }
                     }
                 }
 
                 $conexion->commit();
                 
-                // 3. INICIAR SESIÓN MANUALMENTE (Esto faltaba o fallaba)
+                // C. Loguear automáticamente
                 $_SESSION['cliente_id'] = $nuevo_cliente_id;
                 $_SESSION['cliente_nombre'] = $nombre;
-                $_SESSION['cliente_puntos'] = $puntos_ganados;
-                
-                $mensaje_exito = "¡Cuenta Creada!";
+                $mensaje_exito = "¡Registro exitoso!";
 
             } catch (Exception $e) {
                 $conexion->rollBack();
-                $error = "Error: " . $e->getMessage();
+                $error = "Error en el sistema: " . $e->getMessage();
             }
         }
     }
@@ -86,75 +89,67 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
-    <title>Registro</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Registro de Cliente - Peca's Store</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
-        body { background: #f8f9fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
-        .card-registro { max-width: 400px; width: 100%; border-radius: 15px; overflow: hidden; border: none; box-shadow: 0 10px 20px rgba(0,0,0,0.1); }
-        .header-img { background: #0d6efd; padding: 30px; text-align: center; color: white; }
+        body { background-color: #f4f7f6; height: 100vh; display: flex; align-items: center; justify-content: center; }
+        .card-registro { width: 100%; max-width: 400px; padding: 20px; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); background: #fff; }
+        .btn-registro { background-color: #007bff; border: none; font-weight: bold; }
     </style>
 </head>
 <body>
 
-    <?php if(!empty($mensaje_exito)): ?>
-        <div class="card card-registro text-center p-4">
-            <h1 class="text-success mb-3"><i class="bi bi-check-circle-fill"></i></h1>
-            <h3>¡Bienvenido!</h3>
+    <div class="card-registro">
+        <?php if ($mensaje_exito): ?>
+            <div class="text-center">
+                <h2 class="text-success">✔</h2>
+                <h4><?php echo $mensaje_exito; ?></h4>
+                <?php if ($puntos_ganados > 0): ?>
+                    <p class="alert alert-info">¡Has sumado <strong><?php echo $puntos_ganados; ?></strong> puntos!</p>
+                <?php endif; ?>
+                <a href="tienda.php" class="btn btn-primary w-100 mt-3">Ir a la Tienda</a>
+            </div>
+        <?php else: ?>
+            <h4 class="text-center mb-4">Crear mi Cuenta</h4>
             
-            <?php if($puntos_ganados > 0): ?>
-                <div class="alert alert-warning fw-bold mt-3">
-                    <i class="bi bi-star-fill"></i> Ganaste <?php echo $puntos_ganados; ?> Puntos
-                </div>
-            <?php else: ?>
-                <p class="text-muted">Ya podés comprar y sumar puntos.</p>
+            <?php if ($error): ?>
+                <div class="alert alert-danger small"><?php echo $error; ?></div>
             <?php endif; ?>
 
-            <a href="tienda.php" class="btn btn-primary w-100 rounded-pill mt-3">IR A LA TIENDA</a>
-        </div>
+            <form method="POST" action="">
+                <input type="hidden" name="ref_venta_hidden" value="<?php echo $ref_venta; ?>">
 
-    <?php else: ?>
-        <div class="card card-registro">
-            <div class="header-img">
-                <h4>Crear Cuenta</h4>
-                <?php if($ref_venta > 0): ?>
-                    <span class="badge bg-white text-primary mt-2">Ticket #<?php echo $ref_venta; ?> detectado</span>
-                <?php endif; ?>
+                <div class="mb-3">
+                    <label class="form-label small">Nombre Completo</label>
+                    <input type="text" name="nombre" class="form-control" placeholder="Ej: Juan Pérez" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small">DNI (Será tu usuario)</label>
+                    <input type="number" name="dni" class="form-control" placeholder="Sin puntos ni espacios" required>
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small">Teléfono / WhatsApp</label>
+                    <input type="tel" name="telefono" class="form-control" placeholder="Cód. área + número">
+                </div>
+
+                <div class="mb-3">
+                    <label class="form-label small">Contraseña</label>
+                    <input type="password" name="password" class="form-control" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary btn-registro w-100 py-2">
+                    <?php echo ($ref_venta > 0) ? "REGISTRARME Y SUMAR PUNTOS" : "REGISTRARME"; ?>
+                </button>
+            </form>
+            
+            <div class="text-center mt-3">
+                <small>¿Ya tienes cuenta? <a href="login.php">Inicia sesión aquí</a></small>
             </div>
-            <div class="card-body p-4">
-                <?php if(isset($error)): ?><div class="alert alert-danger p-2 text-center small"><?php echo $error; ?></div><?php endif; ?>
-
-                <form method="POST">
-                    <input type="hidden" name="ref_venta_hidden" value="<?php echo $ref_venta; ?>">
-                    
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Nombre</label>
-                        <input type="text" name="nombre" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">DNI (Usuario)</label>
-                        <input type="tel" name="dni" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">WhatsApp</label>
-                        <input type="tel" name="telefono" class="form-control" required>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label small fw-bold">Contraseña</label>
-                        <input type="password" name="password" class="form-control" required>
-                    </div>
-
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary rounded-pill fw-bold">REGISTRARME</button>
-                    </div>
-                    <div class="text-center mt-3">
-                        <a href="auth_login.php" class="small text-decoration-none">Ya tengo cuenta</a>
-                    </div>
-                </form>
-            </div>
-        </div>
-    <?php endif; ?>
+        <?php endif; ?>
+    </div>
 
 </body>
 </html>

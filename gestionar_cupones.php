@@ -1,167 +1,148 @@
 <?php
-// gestionar_cupones.php - VERSIÓN CORREGIDA Y COMPATIBLE CON TU DB EXISTENTE
+// gestionar_cupones.php - DISEÑO PREMIUM
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
-// 1. CONEXIÓN (Mismo parche de seguridad que proveedores.php)
-if (file_exists('db.php')) {
-    require_once 'db.php';
-} elseif (file_exists('includes/db.php')) {
-    require_once 'includes/db.php';
-} else {
-    die("<h1>ERROR CRÍTICO: No se encuentra db.php.</h1>");
-}
+if (file_exists('db.php')) require_once 'db.php';
+elseif (file_exists('includes/db.php')) require_once 'includes/db.php';
+else die("Error db.php");
 
-if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] > 2) {
-    header("Location: dashboard.php"); exit;
-}
+if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] > 2) { header("Location: dashboard.php"); exit; }
 
-// 2. ELIMINAR
 if (isset($_GET['borrar'])) {
-    try {
-        $conexion->prepare("DELETE FROM cupones WHERE id = ?")->execute([$_GET['borrar']]);
-        header("Location: gestionar_cupones.php?msg=eliminado"); exit;
-    } catch (Exception $e) { /* Silencio o log */ }
+    $conexion->prepare("DELETE FROM cupones WHERE id = ?")->execute([$_GET['borrar']]);
+    header("Location: gestionar_cupones.php?msg=del"); exit;
 }
 
-// 3. CREAR (Usando nombres de columnas EXISTENTES en tu DB)
 $mensaje = '';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    try {
-        $codigo = strtoupper(trim($_POST['codigo']));
-        $porcentaje = (int)$_POST['porcentaje'];
-        $vencimiento = $_POST['vencimiento']; // Se guardará en 'fecha_limite'
-        $limite = (int)$_POST['limite'];
+    $codigo = strtoupper(trim($_POST['codigo']));
+    $porcentaje = (int)$_POST['porcentaje'];
+    $vencimiento = $_POST['vencimiento'];
+    $limite = (int)$_POST['limite'];
 
-        // Validar duplicado
-        $stmt = $conexion->prepare("SELECT COUNT(*) FROM cupones WHERE codigo = ?");
-        $stmt->execute([$codigo]);
-        
-        if ($stmt->fetchColumn() > 0) {
-            $mensaje = '<div class="alert alert-danger">❌ El código <b>'.$codigo.'</b> ya existe.</div>';
-        } else {
-            // AQUÍ ESTABA EL ERROR: Usamos tus columnas reales
-            $sql = "INSERT INTO cupones (codigo, descuento_porcentaje, fecha_limite, cantidad_limite, usos_actuales, activo) 
-                    VALUES (?, ?, ?, ?, 0, 1)";
-            $stmtInsert = $conexion->prepare($sql);
-            
-            if ($stmtInsert->execute([$codigo, $porcentaje, $vencimiento, $limite])) {
-                $mensaje = '<div class="alert alert-success">✅ Cupón creado.</div>';
-            }
-        }
-    } catch (Exception $e) {
-        $mensaje = '<div class="alert alert-danger">Error SQL: '.$e->getMessage().'</div>';
+    $stmt = $conexion->prepare("SELECT COUNT(*) FROM cupones WHERE codigo = ?");
+    $stmt->execute([$codigo]);
+    
+    if ($stmt->fetchColumn() > 0) {
+        $mensaje = '<div class="alert alert-danger rounded-pill text-center">❌ Código duplicado.</div>';
+    } else {
+        $sql = "INSERT INTO cupones (codigo, descuento_porcentaje, fecha_limite, cantidad_limite, usos_actuales, activo) VALUES (?, ?, ?, ?, 0, 1)";
+        $conexion->prepare($sql)->execute([$codigo, $porcentaje, $vencimiento, $limite]);
+        $mensaje = '<div class="alert alert-success rounded-pill text-center">✅ Cupón creado.</div>';
     }
 }
 
-// 4. LISTAR (Usando 'fecha_limite' en el ORDER BY)
-try {
-    $cupones = $conexion->query("SELECT * FROM cupones ORDER BY fecha_limite DESC")->fetchAll(PDO::FETCH_ASSOC);
-} catch (Exception $e) {
-    $cupones = [];
-    $mensaje = '<div class="alert alert-danger">Error de lectura: '.$e->getMessage().'</div>';
-}
+$cupones = $conexion->query("SELECT * FROM cupones ORDER BY fecha_limite DESC")->fetchAll(PDO::FETCH_ASSOC);
+$activos = 0; foreach($cupones as $c) { if($c['fecha_limite'] >= date('Y-m-d')) $activos++; }
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Gestión de Cupones</title>
+    <title>Cupones</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; font-family: 'Inter', sans-serif; }
+        .header-gradient {
+            background: linear-gradient(135deg, #8E2DE2 0%, #4A00E0 100%);
+            color: white; padding: 30px 0; border-radius: 0 0 30px 30px; margin-bottom: 30px; box-shadow: 0 4px 15px rgba(74, 0, 224, 0.2);
+        }
+        .card-custom { border: none; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+    </style>
 </head>
-<body class="bg-light">
-
+<body>
+    
     <?php 
     if(file_exists('menu.php')) include 'menu.php'; 
     elseif(file_exists('includes/menu.php')) include 'includes/menu.php';
     ?>
 
-    <div class="container py-4">
+    <div class="header-gradient">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <h2 class="fw-bold mb-0">Marketing & Cupones</h2>
+                <p class="opacity-75 mb-0">Gestioná descuentos para tus clientes.</p>
+            </div>
+            <div class="bg-white bg-opacity-25 rounded-pill px-4 py-2">
+                <span class="fw-bold fs-5"><?php echo $activos; ?></span> <small>Activos</small>
+            </div>
+        </div>
+    </div>
+
+    <div class="container pb-5">
         <div class="row g-4">
-            
             <div class="col-md-4">
-                <div class="card shadow border-0">
-                    <div class="card-header bg-dark text-white fw-bold">
-                        <i class="bi bi-plus-circle-dotted me-2"></i>Nuevo Cupón
-                    </div>
+                <div class="card card-custom h-100">
+                    <div class="card-header bg-white fw-bold py-3"><i class="bi bi-plus-circle"></i> Crear Nuevo</div>
                     <div class="card-body">
                         <?php echo $mensaje; ?>
                         <form method="POST">
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Código</label>
-                                <input type="text" name="codigo" class="form-control text-uppercase" required placeholder="Ej: PROMO10">
+                                <label class="small fw-bold text-muted">Código (Ej: SUMMER25)</label>
+                                <input type="text" name="codigo" class="form-control form-control-lg text-uppercase fw-bold" required>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Descuento (%)</label>
-                                <input type="number" name="porcentaje" class="form-control" min="1" max="100" required placeholder="10">
+                            <div class="row g-2 mb-3">
+                                <div class="col-6">
+                                    <label class="small fw-bold text-muted">% Descuento</label>
+                                    <input type="number" name="porcentaje" class="form-control" min="1" max="100" required>
+                                </div>
+                                <div class="col-6">
+                                    <label class="small fw-bold text-muted">Límite Usos</label>
+                                    <input type="number" name="limite" class="form-control" value="0" placeholder="0 = Infinito">
+                                </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Vencimiento</label>
+                            <div class="mb-4">
+                                <label class="small fw-bold text-muted">Vencimiento</label>
                                 <input type="date" name="vencimiento" class="form-control" required min="<?php echo date('Y-m-d'); ?>">
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Límite de Usos</label>
-                                <input type="number" name="limite" class="form-control" value="0">
-                                <div class="form-text small">0 = Ilimitado</div>
-                            </div>
-                            <button type="submit" class="btn btn-primary w-100 fw-bold">GUARDAR</button>
+                            <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm">GUARDAR CUPÓN</button>
                         </form>
                     </div>
                 </div>
             </div>
 
             <div class="col-md-8">
-                <div class="card shadow border-0">
-                    <div class="card-header bg-white fw-bold">Cupones Activos</div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead class="table-light">
-                                    <tr>
-                                        <th class="ps-3">Código</th>
-                                        <th class="text-center">Desc.</th>
-                                        <th>Vence</th>
-                                        <th class="text-center">Usos</th>
-                                        <th class="text-end pe-3"></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(count($cupones) > 0): ?>
-                                        <?php foreach($cupones as $c): 
-                                            // Mapeo de columnas viejas a variables lógicas
-                                            $venc = $c['fecha_limite'] ?? $c['fecha_vencimiento'] ?? null;
-                                            $desc = $c['descuento_porcentaje'] ?? $c['porcentaje'] ?? 0;
-                                            $lim = $c['cantidad_limite'] ?? 0;
-                                            $usos = $c['usos_actuales'] ?? 0;
-                                            
-                                            $vencido = ($venc && $venc < date('Y-m-d'));
-                                            $agotado = ($lim > 0 && $usos >= $lim);
-                                            
-                                            $style = ($vencido || $agotado) ? 'opacity-50' : '';
-                                        ?>
-                                        <tr class="<?php echo $style; ?>">
-                                            <td class="ps-3 fw-bold text-uppercase"><?php echo $c['codigo']; ?></td>
-                                            <td class="text-center"><span class="badge bg-info text-dark"><?php echo $desc; ?>%</span></td>
-                                            <td class="small"><?php echo $venc ? date('d/m/Y', strtotime($venc)) : '∞'; ?></td>
-                                            <td class="text-center small"><?php echo $usos; ?> / <?php echo ($lim == 0) ? '∞' : $lim; ?></td>
-                                            <td class="text-end pe-3">
-                                                <a href="gestionar_cupones.php?borrar=<?php echo $c['id']; ?>" class="text-danger" onclick="return confirm('¿Borrar?');"><i class="bi bi-trash3-fill"></i></a>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <tr><td colspan="5" class="text-center py-3 text-muted">Sin cupones.</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                <div class="card card-custom h-100">
+                    <div class="card-header bg-white fw-bold py-3">Listado de Cupones</div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light small text-uppercase">
+                                <tr>
+                                    <th class="ps-4">Código</th>
+                                    <th>Descuento</th>
+                                    <th>Estado</th>
+                                    <th class="text-end pe-4">Acción</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <?php foreach($cupones as $c): 
+                                    $venc = $c['fecha_limite'];
+                                    $vencido = ($venc < date('Y-m-d'));
+                                    $agotado = ($c['cantidad_limite'] > 0 && $c['usos_actuales'] >= $c['cantidad_limite']);
+                                    $estado = $vencido ? '<span class="badge bg-secondary">Vencido</span>' : ($agotado ? '<span class="badge bg-warning text-dark">Agotado</span>' : '<span class="badge bg-success">Activo</span>');
+                                ?>
+                                <tr class="<?php echo ($vencido || $agotado) ? 'opacity-50' : ''; ?>">
+                                    <td class="ps-4 fw-bold text-primary"><?php echo $c['codigo']; ?></td>
+                                    <td><span class="badge bg-light text-dark border"><?php echo $c['descuento_porcentaje']; ?>% OFF</span></td>
+                                    <td>
+                                        <?php echo $estado; ?>
+                                        <div class="small text-muted">Vence: <?php echo date('d/m/y', strtotime($venc)); ?></div>
+                                    </td>
+                                    <td class="text-end pe-4">
+                                        <a href="gestionar_cupones.php?borrar=<?php echo $c['id']; ?>" class="btn btn-sm btn-outline-danger border-0"><i class="bi bi-trash3-fill"></i></a>
+                                    </td>
+                                </tr>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-
         </div>
     </div>
     

@@ -1,25 +1,20 @@
 <?php
-// admin_revista.php - VERSIÓN FINAL CON MENÚ FUNCIONAL
+// admin_revista.php - VERSIÓN FINAL (FORMULARIOS INDEPENDIENTES)
 require_once 'includes/db.php';
 
 $mensaje = '';
 $tipo_mensaje = '';
 
-// --- AUTO-CORRECCIÓN DE COLUMNAS (INTACTO) ---
+// --- AUTO-CORRECCIÓN DE COLUMNAS ---
 try {
     $cols = [
         "tapa_overlay DECIMAL(3,2) DEFAULT '0.4'",
         "tapa_tit_color VARCHAR(20) DEFAULT '#ffde00'",
         "tapa_sub_color VARCHAR(20) DEFAULT '#ffffff'",
-        "bienv_overlay DECIMAL(3,2) DEFAULT '0.0'",
-        "bienv_tit_color VARCHAR(20) DEFAULT '#333333'",
-        "bienv_txt_color VARCHAR(20) DEFAULT '#555555'",
         "fuente_global VARCHAR(50) DEFAULT 'Poppins'",
         "img_tapa VARCHAR(255) DEFAULT ''",
-        "img_bienvenida VARCHAR(255) DEFAULT ''",
         "tapa_banner_color VARCHAR(20) DEFAULT '#ffffff'",
-        "tapa_banner_opacity DECIMAL(3,2) DEFAULT '0.90'",
-        "bienv_bg_color VARCHAR(20) DEFAULT '#ffffff'"
+        "tapa_banner_opacity DECIMAL(3,2) DEFAULT '0.90'"
     ];
     $conexion->exec("CREATE TABLE IF NOT EXISTS revista_config (id INT PRIMARY KEY)");
     $conexion->exec("INSERT INTO revista_config (id) VALUES (1) ON DUPLICATE KEY UPDATE id=id");
@@ -29,29 +24,21 @@ try {
     }
     $conexion->exec("CREATE TABLE IF NOT EXISTS revista_paginas (id INT PRIMARY KEY AUTO_INCREMENT, nombre_referencia VARCHAR(100), posicion INT DEFAULT 5, imagen_url VARCHAR(255), boton_texto VARCHAR(50), boton_link VARCHAR(255), activa TINYINT DEFAULT 1)");
 } catch(Exception $e) {}
-// ---------------------------------------------------------
 
-// 1. GUARDAR CONFIGURACIÓN
+// 1. GUARDAR CONFIGURACIÓN (PORTADA Y ESTILOS)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'guardar_config') {
     $titulo = $_POST['titulo_tapa'] ?? '';
     $subtitulo = $_POST['subtitulo_tapa'] ?? '';
-    $bienvenida_tit = $_POST['bienvenida_tit'] ?? '';
-    $bienvenida_text = $_POST['bienvenida_text'] ?? '';
     
-    // Estilos
     $tapa_color = $_POST['tapa_banner_color'] ?? '#ffffff';
     $tapa_opac = $_POST['tapa_banner_opacity'] ?? '0.9';
-    $bienv_color = $_POST['bienv_bg_color'] ?? '#ffffff';
     $tapa_overlay = $_POST['tapa_overlay'] ?? '0.4';
     $tapa_tit_color = $_POST['tapa_tit_color'] ?? '#ffde00';
     $tapa_sub_color = $_POST['tapa_sub_color'] ?? '#ffffff';
-    $bienv_overlay = $_POST['bienv_overlay'] ?? '0.0';
-    $bienv_tit_color = $_POST['bienv_tit_color'] ?? '#333333';
-    $bienv_txt_color = $_POST['bienv_txt_color'] ?? '#555555';
     $fuente_global = $_POST['fuente_global'] ?? 'Poppins';
 
     // Imágenes
-    $stmt_actual = $conexion->query("SELECT img_tapa, img_bienvenida FROM revista_config WHERE id=1");
+    $stmt_actual = $conexion->query("SELECT img_tapa FROM revista_config WHERE id=1");
     $actual = $stmt_actual->fetch(PDO::FETCH_ASSOC);
     
     $ruta_tapa = $actual['img_tapa'] ?? '';
@@ -62,32 +49,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         if(move_uploaded_file($_FILES['img_tapa']['tmp_name'], $dir . $nombre)) $ruta_tapa = $dir . $nombre;
     }
 
-    $ruta_bienv = $actual['img_bienvenida'] ?? '';
-    if (!empty($_FILES['img_bienvenida']['name'])) {
-        $dir = 'img/revista/';
-        if (!is_dir($dir)) mkdir($dir, 0777, true);
-        $nombre = time() . '_bienv_' . basename($_FILES['img_bienvenida']['name']);
-        if(move_uploaded_file($_FILES['img_bienvenida']['tmp_name'], $dir . $nombre)) $ruta_bienv = $dir . $nombre;
-    }
-
     $sql = "UPDATE revista_config SET 
-            titulo_tapa=?, subtitulo_tapa=?, texto_bienvenida_titulo=?, texto_bienvenida_cuerpo=?,
-            tapa_banner_color=?, tapa_banner_opacity=?, bienv_bg_color=?,
-            img_tapa=?, img_bienvenida=?, tapa_overlay=?, tapa_tit_color=?, tapa_sub_color=?,
-            bienv_overlay=?, bienv_tit_color=?, bienv_txt_color=?, fuente_global=?
+            titulo_tapa=?, subtitulo_tapa=?,
+            tapa_banner_color=?, tapa_banner_opacity=?,
+            img_tapa=?, tapa_overlay=?, tapa_tit_color=?, tapa_sub_color=?,
+            fuente_global=?
             WHERE id=1";
     
     $stmt = $conexion->prepare($sql);
-    if($stmt->execute([$titulo, $subtitulo, $bienvenida_tit, $bienvenida_text, $tapa_color, $tapa_opac, $bienv_color, $ruta_tapa, $ruta_bienv, $tapa_overlay, $tapa_tit_color, $tapa_sub_color, $bienv_overlay, $bienv_tit_color, $bienv_txt_color, $fuente_global])) {
-        $mensaje = 'Diseño guardado correctamente.';
+    if($stmt->execute([$titulo, $subtitulo, $tapa_color, $tapa_opac, $ruta_tapa, $tapa_overlay, $tapa_tit_color, $tapa_sub_color, $fuente_global])) {
+        $mensaje = '✅ Configuración y Portada guardadas.';
         $tipo_mensaje = 'success';
     } else {
-        $mensaje = 'Error al guardar.';
+        $mensaje = '❌ Error al guardar.';
         $tipo_mensaje = 'danger';
     }
 }
 
-// 2. AGREGAR PÁGINA
+// 2. AGREGAR PÁGINA (ADS)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'nueva_pagina') {
     $nombre = $_POST['nombre']; $posicion = (int)$_POST['posicion']; 
     $btn_txt = $_POST['btn_txt'] ?? ''; $btn_link = $_POST['btn_link'] ?? '';
@@ -100,7 +79,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         if(move_uploaded_file($_FILES['imagen']['tmp_name'], $ruta)) {
             $stmt = $conexion->prepare("INSERT INTO revista_paginas (nombre_referencia, posicion, imagen_url, boton_texto, boton_link) VALUES (?, ?, ?, ?, ?)");
             $stmt->execute([$nombre, $posicion, $ruta, $btn_txt, $btn_link]);
-            $mensaje = 'Página agregada.'; $tipo_mensaje = 'success';
+            $mensaje = '✅ Página agregada.'; $tipo_mensaje = 'success';
         }
     }
 }
@@ -112,7 +91,7 @@ if (isset($_GET['borrar'])) {
     header("Location: admin_revista.php"); exit;
 }
 
-// LEER DATOS (Variable $revista_cfg usada para NO chocar con menú)
+// LEER DATOS
 $revista_cfg = $conexion->query("SELECT * FROM revista_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 if(!$revista_cfg) $revista_cfg = [];
 $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC")->fetchAll(PDO::FETCH_ASSOC);
@@ -121,8 +100,8 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Admin Revista Full</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Admin Revista</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <style>
@@ -148,12 +127,11 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
             <a href="revista.php" target="_blank" class="btn btn-dark w-100 w-md-auto"><i class="bi bi-eye"></i> Ver Resultado</a>
         </div>
 
-        <form method="POST" enctype="multipart/form-data">
-            <input type="hidden" name="accion" value="guardar_config">
+        <div class="row g-4">
             
-            <div class="row g-4">
-                
-                <div class="col-12 col-lg-5">
+            <div class="col-12 col-lg-5">
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="accion" value="guardar_config">
                     
                     <div class="card mb-3 shadow-sm">
                         <div class="card-header bg-dark text-white">Tipografía</div>
@@ -216,50 +194,14 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                         </div>
                     </div>
 
-                    <div class="card mb-3 shadow-sm">
-                        <div class="card-header bg-success text-white">2. Bienvenida</div>
-                        <div class="card-body">
-                            <div class="mb-2 text-center">
-                                <?php if(!empty($revista_cfg['img_bienvenida'])): ?>
-                                    <img src="<?php echo $revista_cfg['img_bienvenida']; ?>?v=<?php echo time(); ?>" class="preview-img">
-                                    <div class="small text-success mt-1"><i class="bi bi-check-circle"></i> Imagen cargada</div>
-                                <?php else: ?>
-                                    <div class="p-3 bg-light text-muted border rounded">Sin imagen actual</div>
-                                <?php endif; ?>
-                            </div>
+                    <button type="submit" class="btn btn-primary w-100 fw-bold py-3 mb-4 shadow-sm">GUARDAR CONFIGURACIÓN</button>
+                </form>
+            </div>
 
-                            <label class="small fw-bold">Cambiar Imagen (Vecino/Local)</label>
-                            <input type="file" name="img_bienvenida" class="form-control form-control-sm mb-2">
-                            
-                            <label class="small fw-bold">Oscuridad Foto</label>
-                            <input type="range" name="bienv_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $revista_cfg['bienv_overlay'] ?? '0.0'; ?>">
-
-                            <div class="row g-2">
-                                <div class="col-8">
-                                    <input type="text" name="bienvenida_tit" class="form-control form-control-sm" placeholder="Título" value="<?php echo $revista_cfg['texto_bienvenida_titulo'] ?? ''; ?>">
-                                </div>
-                                <div class="col-4">
-                                    <input type="color" name="bienv_tit_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_tit_color'] ?? '#333333'; ?>">
-                                </div>
-                                <div class="col-8">
-                                    <textarea name="bienvenida_text" class="form-control form-control-sm" rows="2" placeholder="Mensaje"><?php echo $revista_cfg['texto_bienvenida_cuerpo'] ?? ''; ?></textarea>
-                                </div>
-                                <div class="col-4">
-                                    <input type="color" name="bienv_txt_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_txt_color'] ?? '#555555'; ?>">
-                                </div>
-                            </div>
-                            
-                            <div class="mt-2">
-                                <label class="small fw-bold">Color Fondo Panel Texto</label>
-                                <input type="color" name="bienv_bg_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['bienv_bg_color'] ?? '#ffffff'; ?>">
-                            </div>
-                        </div>
-                    </div>
-
-                    <button type="submit" class="btn btn-primary w-100 fw-bold py-3 mb-4 shadow-sm">GUARDAR CAMBIOS</button>
-                </div>
-
-                <div class="col-12 col-lg-7">
+            <div class="col-12 col-lg-7">
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="accion" value="nueva_pagina">
+                    
                     <div class="card shadow-sm">
                         <div class="card-header bg-danger text-white d-flex justify-content-between">
                             <span>Páginas Especiales / Ads</span>
@@ -267,10 +209,9 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                         </div>
                         <div class="card-body bg-light">
                             <div class="row g-2 mb-3 border-bottom pb-3 align-items-end">
-                                <input type="hidden" name="accion" value="nueva_pagina">
                                 
                                 <div class="col-12 col-md-4">
-                                    <label class="small fw-bold">Nombre</label>
+                                    <label class="small fw-bold">Nombre Referencia</label>
                                     <input type="text" name="nombre" class="form-control form-control-sm" required>
                                 </div>
                                 <div class="col-6 col-md-2">
@@ -278,14 +219,14 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                                     <input type="number" name="posicion" class="form-control form-control-sm" required placeholder="0, 5...">
                                 </div>
                                 <div class="col-12 col-md-6">
-                                    <label class="small fw-bold">Imagen</label>
+                                    <label class="small fw-bold">Imagen Publicidad</label>
                                     <input type="file" name="imagen" class="form-control form-control-sm" required>
                                 </div>
                                 <div class="col-6 col-md-6">
-                                    <input type="text" name="btn_txt" class="form-control form-control-sm" placeholder="Texto Botón">
+                                    <input type="text" name="btn_txt" class="form-control form-control-sm" placeholder="Texto Botón (Opcional)">
                                 </div>
                                 <div class="col-6 col-md-6">
-                                    <input type="text" name="btn_link" class="form-control form-control-sm" placeholder="Link Botón">
+                                    <input type="text" name="btn_link" class="form-control form-control-sm" placeholder="Link Botón (Opcional)">
                                 </div>
                                 <div class="col-12 text-end mt-2">
                                     <button type="submit" class="btn btn-success btn-sm px-4 fw-bold w-100 w-md-auto">AGREGAR PÁGINA</button>
@@ -310,9 +251,9 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                             </div>
                         </div>
                     </div>
-                </div>
+                </form>
             </div>
-        </form>
+        </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

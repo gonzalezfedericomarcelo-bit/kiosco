@@ -83,8 +83,9 @@ if($rol_usuario <= 2) {
         .dash-header {
             background: linear-gradient(135deg, #111 0%, #333 100%);
             color: white; padding: 25px 20px 30px 20px;
-            border-radius: 0 0 30px 30px; 
-            margin-bottom: 20px;
+            padding: 15px 15px 20px 15px; /* MENOS RELLENO */
+            border-radius: 0 0 20px 20px; /* Borde más sutil */
+            margin-bottom: 15px; /* Menos separación con lo de abajo */
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         
@@ -92,7 +93,7 @@ if($rol_usuario <= 2) {
             background: rgba(255, 255, 255, 0.1);
             border: 1px solid rgba(255, 255, 255, 0.2);
             border-radius: 12px;
-            padding: 10px;
+            padding: 5px;
             text-align: center;
             height: 100%;
             display: flex;
@@ -144,16 +145,17 @@ if($rol_usuario <= 2) {
 
     <div class="dash-header">
         <div class="container">
-            <div class="d-flex justify-content-between align-items-start mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2"> 
                 <div>
-                    <h1 class="fw-bold mb-0 fs-2">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?>!</h1>
-                    <p class="opacity-75 mb-0 small">
+                    <h1 class="fw-bold mb-0 fs-4">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?>!</h1>
+                    <p class="opacity-75 mb-0 small" style="font-size: 0.75rem;">
                         <?php echo ($rol_usuario <= 2) ? 'Panel de Control Total' : 'Panel de Ventas'; ?>
                     </p>
                 </div>
                 <div class="text-end">
-                    <div class="fs-4 fw-bold" id="reloj">--:--:--</div>
-                    <span class="badge bg-white text-dark shadow-sm">ARGENTINA</span>
+                    <div class="text-end">
+                        <div class="fs-6 fw-bold" id="reloj">--:--:--</div> <span class="badge bg-white text-dark shadow-sm" style="font-size: 0.65rem;">ARGENTINA</span>
+                    </div>
                 </div>
             </div>
             

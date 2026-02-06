@@ -1,5 +1,5 @@
 <?php
-// ticket.php - VERSIÓN FINAL CON MIXTOS
+// ticket.php - VERSIÓN INTEGRADA (Tus funciones + QR de Puntos)
 session_start();
 require_once 'includes/db.php';
 
@@ -7,7 +7,7 @@ if (!isset($_SESSION['usuario_id'])) { die("Acceso denegado"); }
 
 $id_venta = $_GET['id'] ?? 0;
 
-// 1. DATOS VENTA
+// 1. DATOS VENTA (Con tus JOINs originales)
 $stmt = $conexion->prepare("SELECT v.*, u.usuario, c.nombre as cliente, c.dni_cuit as dni
                             FROM ventas v 
                             JOIN usuarios u ON v.id_usuario = u.id 
@@ -26,7 +26,7 @@ $stmtDet = $conexion->prepare("SELECT d.*, p.descripcion
 $stmtDet->execute([$id_venta]);
 $detalles = $stmtDet->fetchAll(PDO::FETCH_ASSOC);
 
-// 3. DATOS DEUDA Y PAGOS MIXTOS
+// 3. DATOS DEUDA Y PAGOS MIXTOS (Tu lógica original)
 $stmtDeuda = $conexion->prepare("SELECT monto FROM movimientos_cc WHERE id_venta = ? AND tipo = 'haber' LIMIT 1");
 $stmtDeuda->execute([$id_venta]);
 $pago_deuda_info = $stmtDeuda->fetch(PDO::FETCH_ASSOC);
@@ -39,10 +39,10 @@ if($venta['metodo_pago'] === 'Mixto') {
     $pagos_mixtos = $stmtMix->fetchAll(PDO::FETCH_ASSOC);
 }
 
-// 4. CONFIGURACIÓN
+// 4. CONFIGURACIÓN DINÁMICA
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 
-// CÁLCULO SALDO A FAVOR
+// Tu cálculo de Saldo a Favor
 $subtotal_real_productos = 0;
 foreach($detalles as $d) $subtotal_real_productos += $d['subtotal'];
 $saldo_favor_usado = $subtotal_real_productos - ($venta['descuento_monto_cupon'] ?? 0) - ($venta['descuento_manual'] ?? 0) - $venta['total'];
@@ -65,18 +65,17 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
         table { width: 100%; border-collapse: collapse; }
         td { vertical-align: top; padding: 2px 0; }
         .cantidad { width: 25px; }
-        .producto { }
-        .precio { text-align: right; width: 60px; }
-        .totales { margin-top: 5px; font-size: 14px; }
+        .precio { text-align: right; width: 70px; }
+        .totales { margin-top: 5px; font-size: 13px; }
         @media print { .no-print { display: none; } }
     </style>
 </head>
 <body onload="window.print()">
     <div class="ticket">
         <div class="centrado">
-            <h3 class="negrita" style="font-size: 16px;">Peca's Store</h3>
-            <p><?php echo $conf['direccion_local']; ?></p>
-            <p>Whatsapp: <?php echo $conf['telefono_whatsapp']; ?></p>
+            <h3 class="negrita" style="font-size: 16px;"><?php echo $conf['nombre_negocio'] ?? "Peca's Store"; ?></h3>
+            <p><?php echo $conf['direccion_local'] ?? $conf['direccion']; ?></p>
+            <p>Whatsapp: <?php echo $conf['telefono_whatsapp'] ?? $conf['telefono']; ?></p>
             <div class="linea"></div>
             <p>Ticket: #<?php echo str_pad($venta['id'], 6, '0', STR_PAD_LEFT); ?></p>
             <p>Fecha: <?php echo date('d/m/Y H:i', strtotime($venta['fecha'])); ?></p>
@@ -86,7 +85,7 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
         <div class="linea"></div>
         
         <div>
-            Cliente: <?php echo substr($venta['cliente'], 0, 20); ?><br>
+            Cliente: <?php echo substr($venta['cliente'], 0, 25); ?><br>
             <?php if($venta['dni']) echo "DNI: " . $venta['dni']; ?>
         </div>
         
@@ -95,17 +94,18 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
         <table>
             <thead>
                 <tr>
-                    <th class="cantidad">Can</th>
-                    <th class="producto" style="text-align:left;">Prod</th>
-                    <th class="precio">Total</th>
+                    <th class="cantidad" style="text-align:left;">Cant</th>
+                    <th style="text-align:left;">Producto</th>
+                    <th class="precio">Subt</th>
                 </tr>
             </thead>
             <tbody>
                 <?php foreach($detalles as $d): ?>
                 <tr>
                     <td class="cantidad"><?php echo floatval($d['cantidad']); ?></td>
-                    <td class="producto"><?php echo substr($d['descripcion'], 0, 20); ?></td>
-                    <td class="precio">$<?php echo number_format($d['subtotal'], 2, ',', '.'); ?></td> </tr>
+                    <td><?php echo substr($d['descripcion'], 0, 22); ?></td>
+                    <td class="precio">$<?php echo number_format($d['subtotal'], 2, ',', '.'); ?></td>
+                </tr>
                 <?php endforeach; ?>
             </tbody>
         </table>
@@ -113,7 +113,7 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
         <div class="linea"></div>
         
         <div class="derecha totales">
-            <p style="font-size: 12px;">Subtotal: $<?php echo number_format($subtotal_real_productos, 2, ',', '.'); ?></p>
+            <p>Subtotal: $<?php echo number_format($subtotal_real_productos, 2, ',', '.'); ?></p>
 
             <?php if($venta['descuento_monto_cupon'] > 0): ?>
                 <p>Desc. Cupón: -$<?php echo number_format($venta['descuento_monto_cupon'], 2, ',', '.'); ?></p>
@@ -133,11 +133,11 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
                 </div>
             <?php endif; ?>
 
-            <p class="negrita" style="font-size: 16px; margin-top: 5px;">TOTAL: $<?php echo number_format($venta['total'], 2, ',', '.'); ?></p>
+            <p class="negrita" style="font-size: 15px; margin-top: 5px;">TOTAL: $<?php echo number_format($venta['total'], 2, ',', '.'); ?></p>
             
             <?php if($venta['metodo_pago'] === 'Mixto'): ?>
                 <div style="font-size: 11px; margin-top: 5px;">
-                    <p class="negrita">Pagos:</p>
+                    <p class="negrita">Desglose de Pago:</p>
                     <?php foreach($pagos_mixtos as $pm): ?>
                         <p><?php echo $pm['metodo_pago']; ?>: $<?php echo number_format($pm['monto'], 2, ',', '.'); ?></p>
                     <?php endforeach; ?>
@@ -145,17 +145,21 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
             <?php else: ?>
                 <p style="font-size: 11px;">Pago: <?php echo $venta['metodo_pago']; ?></p>
             <?php endif; ?>
-            <div class="linea"></div>
-        <div class="centrado" style="margin-top:10px;">
-            <p style="font-size:10px; margin-bottom:5px;">¡Escaneá y sumá puntos!</p>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://<?php echo $_SERVER['HTTP_HOST']; ?>/kiosco/registro_cliente.php?ref_venta=<?php echo $venta['id']; ?>" alt="QR Registro" style="width:80px; height:80px;">
         </div>
+
+        <div class="linea"></div>
+
+        <div class="centrado" style="margin-top:10px;">
+            <p class="negrita" style="font-size:10px;">¡REGISTRATE Y SUMÁ PUNTOS!</p>
+            <p style="font-size:9px;">Escaneá para cargar los puntos de este ticket.</p>
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://<?php echo $_SERVER['HTTP_HOST']; ?>/registro_cliente.php?ref_venta=<?php echo $venta['id']; ?>" alt="QR Registro" style="width:90px; height:90px; margin: 5px 0;">
+            <p style="font-size:8px;">Válido por única vez para registro.</p>
         </div>
         
         <div class="linea"></div>
-        <div class="centrado">
+        <div class="centrado" style="margin-bottom: 10px;">
             <p>¡Gracias por su compra!</p>
-            <p>********</p>
+            <p>Peca's Store</p>
         </div>
 
         <button class="no-print" style="width:100%; padding:10px; margin-top:10px; cursor:pointer;" onclick="window.close()">CERRAR VENTANA</button>

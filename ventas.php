@@ -1,24 +1,20 @@
 <?php
-// ventas.php - CONTROL DE APERTURA
+// ventas.php - CONTROL DE APERTURA (FINAL CORREGIDO RUTAS)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
 require_once 'check_security.php';
 
-// VERIFICAR CAJA ABIERTA
 $usuario_id = $_SESSION['usuario_id'];
 $stmt = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
 $stmt->execute([$usuario_id]);
 $caja = $stmt->fetch(PDO::FETCH_ASSOC);
 
 if(!$caja) {
-    // Si no hay caja abierta, lo mandamos a abrirla
     header("Location: apertura_caja.php"); exit;
 }
-$id_caja_actual = $caja['id']; // Guardamos el ID real de hoy
+$id_caja_actual = $caja['id'];
 
-// ... (El resto del código de carga de cupones sigue igual, no lo borres) ...
-// CARGA DE CUPONES
 try {
     $sqlCupones = "SELECT * FROM cupones WHERE activo = 1 AND (fecha_limite IS NULL OR fecha_limite >= CURDATE())";
     $cupones_db = $conexion->query($sqlCupones)->fetchAll(PDO::FETCH_ASSOC);
@@ -88,7 +84,6 @@ try {
                 <div class="card shadow border-0" style="position: relative; z-index: 1;">
                     <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-cart3"></i> Carrito de Compras</span>
-                        
                     </div>
                     <div class="card-body p-0">
                         <div class="tabla-ventas table-responsive">
@@ -117,15 +112,29 @@ try {
                             <div>
                                 <small class="text-muted text-uppercase fw-bold" style="font-size: 0.7rem;">Cliente</small>
                                 <div id="lbl-nombre-cliente" class="fw-bold text-dark text-truncate" style="max-width: 150px;">Consumidor Final</div>
+                                <div id="box-puntos-cliente" style="display:none;" class="small text-warning fw-bold mt-1">
+                                    <i class="bi bi-star-fill"></i> <span id="lbl-puntos">0</span> Puntos
+                                </div>
                                 <input type="hidden" id="id-cliente" value="1">
                                 <input type="hidden" id="val-deuda" value="0">
                                 <input type="hidden" id="pago-deuda-calculado" value="0">
+                                <input type="hidden" id="val-puntos" value="0">
+                                <input type="hidden" id="val-puntos-usados" value="0">
                             </div>
                             <button class="btn btn-sm btn-outline-primary" onclick="abrirModalClientes()"><i class="bi bi-pencil-fill"></i> Cambiar</button>
                         </div>
                         
                         <div id="info-deuda" class="d-none mb-3 text-center">
                             <div class="alert alert-danger py-1 mb-0 fw-bold">Deuda: <span id="lbl-deuda"></span></div>
+                        </div>
+
+                        <div id="info-puntos" class="d-none mb-3 text-center">
+                            <div class="alert alert-warning py-1 mb-0 d-flex justify-content-between align-items-center px-2">
+                                <span class="fw-bold small">Usar Puntos (-$<span id="lbl-dinero-puntos">0</span>)</span>
+                                <div class="form-check form-switch m-0">
+                                    <input class="form-check-input" type="checkbox" id="usar-puntos" onchange="calc()">
+                                </div>
+                            </div>
                         </div>
                         
                         <div id="info-saldo" class="d-none mb-3 text-center">
@@ -191,14 +200,14 @@ try {
                             <small>Detalle se confirmará al finalizar.</small>
                         </div>
 
-<div class="d-flex gap-2 mb-2">
-    <button type="button" class="btn btn-warning fw-bold flex-fill" onclick="suspenderVentaActual()">
-        <i class="bi bi-pause-circle"></i> ESPERA
-    </button>
-    <button type="button" class="btn btn-info fw-bold flex-fill text-white" onclick="abrirModalSuspendidas()">
-        <i class="bi bi-arrow-counterclockwise"></i> RECUPERAR
-    </button>
-</div>
+                        <div class="d-flex gap-2 mb-2">
+                            <button type="button" class="btn btn-warning fw-bold flex-fill" onclick="suspenderVentaActual()">
+                                <i class="bi bi-pause-circle"></i> ESPERA
+                            </button>
+                            <button type="button" class="btn btn-info fw-bold flex-fill text-white" onclick="abrirModalSuspendidas()">
+                                <i class="bi bi-arrow-counterclockwise"></i> RECUPERAR
+                            </button>
+                        </div>
 
 
                         <div class="d-grid gap-2 mt-auto">
@@ -288,6 +297,18 @@ try {
             </div>
         </div>
     </div>
+    
+    <div class="modal fade" id="modalSuspendidas" tabindex="-1">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content">
+                <div class="modal-header bg-warning">
+                    <h5 class="modal-title fw-bold text-dark"><i class="bi bi-pause-circle-fill"></i> Ventas en Espera</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body p-0" id="listaSuspendidasBody"></div>
+            </div>
+        </div>
+    </div>
 
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
@@ -295,12 +316,16 @@ try {
     
     <script>
         let carrito = []; 
-        let pagosMixtosConfirmados = null; // Variable para guardar el desglose
+        let pagosMixtosConfirmados = null;
         const cuponesDB = <?php echo json_encode($cupones_db); ?>;
         const modalCliente = new bootstrap.Modal(document.getElementById('modalBuscarCliente'));
         const modalMixto = new bootstrap.Modal(document.getElementById('modalPagoMixto'));
 
-        $(document).ready(function() { verificarVentaPausada(); });
+        $(document).ready(function() { 
+            verificarVentaPausada(); 
+            // Cargar rápidos inicial
+            cargarRapidos('');
+        });
 
         document.addEventListener('keydown', function(e) {
             if(e.key === 'F2') { e.preventDefault(); $('#buscar-producto').focus(); }
@@ -315,6 +340,48 @@ try {
                 }
             }
         });
+        
+        // --- FUNCIÓN AGREGADA PARA QUE FUNCIONE EL GRID ---
+        function cargarRapidos(categoria) {
+            $('#grid-rapidos').html('<div class="text-center w-100"><div class="spinner-border spinner-border-sm"></div></div>');
+            $('#filtros-rapidos button').removeClass('btn-dark fw-bold').addClass('btn-outline-secondary');
+            
+            $.getJSON('acciones/listar_rapidos.php', { cat: categoria }, function(data) {
+                let html = '';
+                if(data.length > 0) {
+                    data.forEach(p => {
+                        let nombre = p.descripcion.length > 15 ? p.descripcion.substring(0,15)+'..' : p.descripcion;
+                        let stock = parseFloat(p.stock_actual);
+                        let min = parseFloat(p.stock_minimo) || 5;
+                        let bordeClass = 'border-0';
+                        let textStock = '';
+
+                        if(stock <= 0) {
+                            bordeClass = 'border-2 border-danger bg-danger bg-opacity-10'; 
+                            textStock = '<span class="badge bg-danger position-absolute top-0 start-0 m-1" style="font-size:0.6em">SIN STOCK</span>';
+                        } else if (stock <= min) {
+                            bordeClass = 'border-2 border-warning';
+                        }
+                        
+                        let jsonProducto = JSON.stringify(p).replace(/'/g, "&#39;");
+
+                        html += `
+                        <div class="col-4 col-md-3 col-lg-2">
+                            <div class="card h-100 shadow-sm ${bordeClass} producto-rapido" onclick='seleccionarProducto(${jsonProducto})' style="cursor:pointer; position:relative;">
+                                ${textStock}
+                                <div class="card-body p-2 text-center">
+                                    <div class="fw-bold small text-truncate" title="${p.descripcion}">${nombre}</div>
+                                    <div class="text-primary fw-bold small">$${p.precio_venta}</div>
+                                    <div class="text-muted" style="font-size:0.65rem">Stock: ${stock}</div>
+                                </div>
+                            </div>
+                        </div>`;
+                    });
+                } else { html = '<div class="text-center w-100 text-muted small">No hay productos en esta categoría.</div>'; }
+                $('#grid-rapidos').html(html);
+            });
+        }
+        // --------------------------------------------------
 
         // FUNCIONES DE PAUSA
         function pausarVenta() {
@@ -342,7 +409,7 @@ try {
             else $('#btn-recuperar').addClass('d-none').removeClass('btn-pausada-activa');
         }
 
-        // BUSCADOR Y RENDERIZADO
+        // BUSCADOR CON SEMÁFORO Y CORRECCIÓN DE COMILLAS
         $('#buscar-producto').on('keyup', function(e) {
             if(e.key === 'Enter') {
                 let term = $(this).val(); if(term.length < 1) return;
@@ -358,7 +425,24 @@ try {
                 if(res.status == 'success') {
                     if(res.data.length === 1 && res.data[0].codigo_barras == term) seleccionarProducto(res.data[0]);
                     else {
-                        let html = ''; res.data.forEach(p => { html += `<div class="item-resultado" onclick='seleccionarProducto(${JSON.stringify(p)})'><strong>${p.descripcion}</strong> <span class="float-end">$${p.precio_venta}</span></div>`; });
+                        let html = ''; 
+                        res.data.forEach(p => { 
+                            let stock = parseFloat(p.stock_actual);
+                            let colorStock = stock <= (p.stock_minimo||5) ? 'text-danger fw-bold' : 'text-muted';
+                            let aviso = stock <= 0 ? '(AGOTADO)' : '';
+                            
+                            // CORRECCIÓN CRÍTICA DE COMILLAS:
+                            let jsonProducto = JSON.stringify(p).replace(/'/g, "&#39;");
+
+                            html += `
+                            <div class="item-resultado d-flex justify-content-between align-items-center" onclick='seleccionarProducto(${jsonProducto})'>
+                                <div>
+                                    <div class="fw-bold">${p.descripcion} <small class="text-danger">${aviso}</small></div>
+                                    <div class="small ${colorStock}" style="font-size:0.75rem;">Stock: ${stock}</div>
+                                </div>
+                                <span class="badge bg-primary rounded-pill">$${p.precio_venta}</span>
+                            </div>`; 
+                        });
                         $('#lista-resultados').html(html).show();
                     }
                 } else $('#lista-resultados').hide();
@@ -369,6 +453,47 @@ try {
             let ex = carrito.find(i => i.id === p.id); 
             if(ex) ex.cantidad++; else carrito.push({id:p.id, descripcion:p.descripcion, precio:parseFloat(p.precio_venta), cantidad:1});
             render(); $('#buscar-producto').val('').focus(); $('#lista-resultados').hide();
+        };
+
+        // FUNCIÓN SELECCIONAR CLIENTE MEJORADA
+        window.seleccionarCliente = function(id, nombre, saldo, puntos) {
+            $('#id-cliente').val(id);
+            $('#lbl-nombre-cliente').text(nombre);
+            
+            // Lógica de Saldos
+            $('#val-deuda').val(parseFloat(saldo) || 0);
+            if(saldo > 0) {
+                $('#lbl-deuda').text('$' + parseFloat(saldo).toFixed(2));
+                $('#info-deuda').removeClass('d-none');
+                $('#info-saldo').addClass('d-none');
+            } else if(saldo < 0) {
+                let aFavor = Math.abs(parseFloat(saldo));
+                $('#val-saldo').val(aFavor);
+                $('#lbl-saldo').text('$' + aFavor.toFixed(2));
+                $('#info-saldo').removeClass('d-none');
+                $('#info-deuda').addClass('d-none');
+            } else {
+                $('#info-deuda').addClass('d-none');
+                $('#info-saldo').addClass('d-none');
+            }
+
+            // Lógica de Puntos (NUEVO)
+            let pts = puntos ? parseFloat(puntos.toString().replace(/,/g, '')) : 0;
+            $('#val-puntos').val(pts);
+            
+            if(pts > 0) {
+                $('#lbl-puntos').text(pts);
+                let dinero = pts * 1; 
+                $('#lbl-dinero-puntos').text(dinero.toFixed(2));
+                $('#box-puntos-cliente').show();
+                $('#info-puntos').removeClass('d-none');
+            } else {
+                $('#box-puntos-cliente').hide();
+                $('#info-puntos').addClass('d-none');
+            }
+            $('#usar-puntos').prop('checked', false); 
+            modalCliente.hide();
+            calc();
         };
 
         function render() {
@@ -395,6 +520,9 @@ try {
             $('#metodo-pago').val('Efectivo');
             $('#box-vuelto').show();
             $('#box-mixto-info').addClass('d-none');
+            // Resetear puntos
+            $('#usar-puntos').prop('checked', false);
+            $('#val-puntos-usados').val(0);
             render(); 
         }
         
@@ -416,17 +544,28 @@ try {
             let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0;
             let manualDesc = parseFloat($('#input-desc-manual').val()) || 0;
             
+            // 1. Calcular descuento cupón
+            let descuentoCupon = (subtotal * porcDesc) / 100;
+            let aPagarTemp = subtotal - descuentoCupon - manualDesc;
+
+            // 2. Calcular Puntos
+            let descuentoPuntos = 0;
+            if($('#usar-puntos').is(':checked') && aPagarTemp > 0) {
+                let puntosDisponibles = parseFloat($('#val-puntos').val()) || 0;
+                let valorPuntos = puntosDisponibles * 1; 
+                descuentoPuntos = (valorPuntos >= aPagarTemp) ? aPagarTemp : valorPuntos;
+            }
+            aPagarTemp -= descuentoPuntos;
+            $('#val-puntos-usados').val(descuentoPuntos);
+
+            // 3. Calcular Saldo a Favor
             let saldoUsado = 0;
-            let aPagarTemp = subtotal - ((subtotal * porcDesc) / 100) - manualDesc;
-            
             if($('#usar-saldo').is(':checked') && aPagarTemp > 0){
                 let disponible = parseFloat($('#val-saldo').val()) || 0;
                 saldoUsado = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
             }
 
-            let descuentoCupon = (subtotal * porcDesc) / 100;
-            let totalFinal = subtotal - descuentoCupon - manualDesc - saldoUsado; 
-            
+            let totalFinal = subtotal - descuentoCupon - manualDesc - descuentoPuntos - saldoUsado; 
             if(totalFinal < 0) totalFinal = 0; 
             
             $('#total-venta').text('$ ' + totalFinal.toFixed(2));
@@ -435,6 +574,7 @@ try {
             let infoTxt = '';
             if(descuentoCupon > 0) infoTxt += 'Cupón: -$' + descuentoCupon.toFixed(2) + ' | ';
             if(manualDesc > 0) infoTxt += 'Manual: -$' + manualDesc.toFixed(2) + ' | ';
+            if(descuentoPuntos > 0) infoTxt += 'Puntos: -$' + descuentoPuntos.toFixed(2) + ' | '; 
             if(saldoUsado > 0) infoTxt += 'Saldo Favor: -$' + saldoUsado.toFixed(2);
             
             if(infoTxt != '') $('#info-subtotal').text(infoTxt).show(); 
@@ -482,7 +622,6 @@ try {
             }
         }
         
-        // MANEJO DE METODO DE PAGO
         $('#metodo-pago').change(function(){ 
             let val = $(this).val();
             if(val == 'Mixto') {
@@ -492,7 +631,7 @@ try {
             } else if(val == 'Efectivo') {
                 $('#box-vuelto').slideDown();
                 $('#box-mixto-info').addClass('d-none');
-                pagosMixtosConfirmados = null; // Resetear mixto si cambia
+                pagosMixtosConfirmados = null; 
             } else {
                 $('#box-vuelto').slideUp();
                 $('#box-mixto-info').addClass('d-none');
@@ -501,17 +640,16 @@ try {
             calc();
         });
 
-        // LOGICA MODAL MIXTO
         function abrirModalMixto() {
             if(carrito.length === 0) {
                 Swal.fire('Error', 'Carrito vacío', 'error');
                 $('#metodo-pago').val('Efectivo').trigger('change');
                 return;
             }
-            calc(); // Asegurar total actualizado
+            calc(); 
             let total = parseFloat($('#total-venta').attr('data-total-final')) || 0;
             $('#total-mixto-display').text('$' + total.toFixed(2));
-            $('.input-mixto').val(''); // Limpiar inputs
+            $('.input-mixto').val(''); 
             calcRestanteMixto();
             modalMixto.show();
         }
@@ -554,7 +692,6 @@ try {
 
         function cerrarModalMixto() {
             modalMixto.hide();
-            // Si cancela y no tenía confirmado, volvemos a efectivo
             if(!pagosMixtosConfirmados) {
                 $('#metodo-pago').val('Efectivo').trigger('change');
             }
@@ -562,222 +699,111 @@ try {
 
         window.abrirModalClientes = function() { $('#input-search-modal').val(''); $('#lista-clientes-modal').html(''); modalCliente.show(); setTimeout(()=>$('#input-search-modal').focus(),500); };
         
+        // BUSCADOR DE CLIENTES (CORREGIDO PARA PASAR PUNTOS)
         $('#input-search-modal').on('keyup', function() {
-            let term = $(this).val(); if(term.length < 2) return;
+            let term = $(this).val(); 
+            if(term.length < 2) return;
+            
             $.getJSON('acciones/buscar_cliente_ajax.php', { term: term }, function(res) {
-                let html = ''; if(res.length > 0) res.forEach(c => { 
-                    let dni = c.dni ? c.dni : '--'; 
-                    let saldoClass = c.saldo_actual > 0 ? 'text-danger fw-bold' : 'text-success'; 
-                    let textoSaldo = c.saldo_actual > 0 ? 'Debe $' + c.saldo_actual : 'Al día'; 
-                    html += `<button class="list-group-item list-group-item-action p-3" onclick="seleccionarCliente(${c.id}, '${c.nombre}', ${c.saldo_actual}, ${c.saldo_favor || 0})"><div class="d-flex w-100 justify-content-between align-items-center"><div><h6 class="mb-1 fw-bold">${c.nombre}</h6><div class="small text-muted">DNI: ${dni}</div></div><div class="text-end"><small class="${saldoClass}">${textoSaldo}</small></div></div></button>`; 
-                }); else html = '<div class="p-3 text-center text-muted">No se encontraron clientes.</div>'; $('#lista-clientes-modal').html(html);
-            });
-        });
+                let html = ''; 
+                if(res.length > 0) {
+                    res.forEach(c => { 
+                        let dni = c.dni ? c.dni : '--'; 
+                        
+                        let saldoVal = parseFloat(c.saldo.toString().replace(/,/g, '')) || 0;
+                        let saldoClass = saldoVal > 0 ? 'text-danger fw-bold' : (saldoVal < 0 ? 'text-success fw-bold' : 'text-muted');
+                        let saldoTexto = saldoVal > 0 ? 'Debe: $' + c.saldo : (saldoVal < 0 ? 'Favor: $' + Math.abs(saldoVal) : 'Al día');
 
-        window.seleccionarCliente=function(id,n,d,s){ 
-            $('#id-cliente').val(id); 
-            $('#lbl-nombre-cliente').text(n); 
-            $('#val-deuda').val(d);
-            
-            if(d > 0) { $('#lbl-deuda').text('$'+d); $('#info-deuda').removeClass('d-none'); } 
-            else { $('#info-deuda').addClass('d-none'); }
-            
-            let saldo = parseFloat(s || 0);
-            if(saldo > 0) {
-                $('#lbl-saldo').text('$' + saldo.toFixed(2));
-                $('#val-saldo').val(saldo);
-                $('#info-saldo').removeClass('d-none');
-                $('#usar-saldo').prop('checked', true); 
-            } else {
-                $('#info-saldo').addClass('d-none');
-                $('#val-saldo').val(0);
-                $('#usar-saldo').prop('checked', false);
-            }
-            modalCliente.hide(); validarCupon(); $('#buscar-producto').focus(); calc(); 
-        };
-
-        $('#btn-finalizar').click(function(){
-            if(carrito.length==0) return Swal.fire('Error','Carrito vacío','error');
-            let m = $('#metodo-pago').val(); let c = $('#id-cliente').val(); let totalFinal = parseFloat($('#total-venta').text().replace('$ ',''));
-            let cuponCode = $('#input-cupon').val().toUpperCase(); let porcDesc = parseFloat($('#total-venta').attr('data-porc-desc')) || 0; let subtotal = parseFloat($('#total-venta').attr('data-subtotal')) || 0; let descCuponPlata = (subtotal * porcDesc) / 100; let descManual = parseFloat($('#input-desc-manual').val()) || 0;
-
-            if(m=='CtaCorriente'&&c==1) return Swal.fire('Error','No se fía a Consumidor Final','warning');
-            
-            // VALIDACIÓN PAGO MIXTO
-            if(m == 'Mixto' && !pagosMixtosConfirmados) {
-                return Swal.fire('Atención', 'Seleccionaste Pago Mixto pero no completaste los montos.', 'warning').then(() => abrirModalMixto());
-            }
-
-            let saldoUsadoEnvio = 0;
-            if($('#usar-saldo').is(':checked')){
-                let disponible = parseFloat($('#val-saldo').val()) || 0;
-                let aPagarTemp = subtotal - descCuponPlata - descManual;
-                saldoUsadoEnvio = (disponible >= aPagarTemp) ? aPagarTemp : disponible;
-            }
-
-            let deudaACobrar = parseFloat($('#pago-deuda-calculado').val()) || 0;
-            // Si es mixto, por ahora no cobramos deuda automáticamente para no complicar el cálculo manual
-            if(m == 'Mixto') deudaACobrar = 0; 
-
-            $.post('acciones/procesar_venta.php', {
-                items: carrito, total: totalFinal, metodo: m, id_cliente: c,
-                cupon_codigo: cuponCode, desc_cupon_monto: descCuponPlata, desc_manual_monto: descManual,
-                saldo_favor_usado: saldoUsadoEnvio,
-                pago_deuda: deudaACobrar,
-                pagos_mixtos: (m == 'Mixto') ? pagosMixtosConfirmados : null // Enviamos el desglose
-            }, function(r){
-                if(r.status=='success'){ 
-                    Swal.fire({
-                        title: '¡Venta Registrada!', text: "¿Deseas imprimir el ticket?", icon: 'success', showCancelButton: true, confirmButtonText: '<i class="bi bi-printer"></i> Imprimir Ticket', cancelButtonText: 'Nueva Venta'
-                    }).then((result) => {
-                        if (result.isConfirmed) { window.open('ticket.php?id=' + r.id_venta, 'Ticket', 'width=350,height=500'); }
-                        vaciarCarrito(); seleccionarCliente(1,'Consumidor Final',0,0); $('#buscar-producto').focus();
+                        html += `
+                        <a href="#" class="list-group-item list-group-item-action p-3 border-bottom" 
+                           onclick="seleccionarCliente(${c.id}, '${c.nombre}', '${c.saldo}', '${c.puntos}')">
+                            <div class="d-flex w-100 justify-content-between align-items-center">
+                                <div>
+                                    <h6 class="mb-1 fw-bold text-primary">${c.nombre}</h6>
+                                    <small class="text-muted"><i class="bi bi-person-vcard"></i> ${dni}</small>
+                                </div>
+                                <div class="text-end">
+                                    <div class="${saldoClass}" style="font-size:0.85rem;">${saldoTexto}</div>
+                                    <small class="text-warning fw-bold"><i class="bi bi-star-fill"></i> ${c.puntos} pts</small>
+                                </div>
+                            </div>
+                        </a>`; 
                     });
-                } else Swal.fire('Error',r.msg,'error');
-            },'json');
-        });
-
-        $(document).ready(function() { cargarRapidos(''); });
-
-        function cargarRapidos(categoria) {
-            $('#grid-rapidos').html('<div class="text-center w-100"><div class="spinner-border spinner-border-sm"></div></div>');
-            $('#filtros-rapidos button').removeClass('btn-dark fw-bold').addClass('btn-outline-secondary');
-            $.getJSON('acciones/listar_rapidos.php', { cat: categoria }, function(data) {
-                let html = '';
-                if(data.length > 0) {
-                    data.forEach(p => {
-                        let nombre = p.descripcion.length > 15 ? p.descripcion.substring(0,15)+'..' : p.descripcion;
-                        html += `<div class="col-4 col-md-3 col-lg-2"><div class="card h-100 shadow-sm border-0 producto-rapido" onclick='seleccionarProducto(${JSON.stringify(p)})' style="cursor:pointer;"><div class="card-body p-2 text-center"><div class="fw-bold small text-truncate" title="${p.descripcion}">${nombre}</div><div class="text-primary fw-bold small">$${p.precio_venta}</div></div></div></div>`;
-                    });
-                } else { html = '<div class="text-center w-100 text-muted small">No hay productos en esta categoría.</div>'; }
-                $('#grid-rapidos').html(html);
-            });
-        }
-    </script>
-    <div class="modal fade" id="modalSuspendidas" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header bg-warning">
-                <h5 class="modal-title fw-bold text-dark"><i class="bi bi-pause-circle-fill"></i> Ventas en Espera</h5>
-                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-            </div>
-            <div class="modal-body p-0" id="listaSuspendidasBody"></div>
-        </div>
-    </div>
-</div>
-
-<script>
-// --- NUEVAS FUNCIONES DE SUSPENDER (Conectadas a tu sistema real) ---
-
-function suspenderVentaActual() {
-    // Usamos TU variable 'carrito' que ya existe en el script principal
-    if (carrito.length === 0) {
-        Swal.fire('Atención', 'El carrito está vacío, no hay nada que guardar.', 'warning'); 
-        return;
-    }
-
-    // Calculamos el total recorriendo tu carrito
-    let total = 0;
-    carrito.forEach(p => total += (parseFloat(p.precio) * parseFloat(p.cantidad)));
-
-    Swal.fire({
-        title: 'Dejar venta en Espera',
-        input: 'text',
-        inputPlaceholder: 'Referencia (Ej: "Señora Rubia")',
-        inputAttributes: { maxlength: 50 },
-        showCancelButton: true,
-        confirmButtonColor: '#ffc107',
-        confirmButtonText: '<i class="bi bi-pause-circle"></i> Suspender',
-        cancelButtonText: 'Cancelar'
-    }).then((result) => {
-        if (result.isConfirmed) {
-            let ref = result.value || 'Sin Referencia';
-            
-            // Llamamos a los archivos que moviste a la carpeta 'acciones'
-            $.ajax({
-                url: 'acciones/suspender_guardar.php',
-                type: 'POST',
-                data: JSON.stringify({ carrito: carrito, referencia: ref, total: total }),
-                contentType: 'application/json',
-                success: function(data) {
-                    let res = (typeof data === 'string') ? JSON.parse(data) : data;
-                    
-                    if(res.status === 'success') {
-                        vaciarCarrito(); // Usamos TU función vaciarCarrito() del script principal
-                        Swal.fire({
-                            title: '¡Suspendida!',
-                            text: 'La venta quedó guardada en el servidor.',
-                            icon: 'success',
-                            timer: 1500,
-                            showConfirmButton: false
-                        });
-                    } else {
-                        Swal.fire('Error', 'No se pudo guardar: ' + (res.msg || 'Error desconocido'), 'error');
-                    }
-                },
-                error: function() {
-                    Swal.fire('Error', 'Error de conexión con acciones/suspender_guardar.php', 'error');
-                }
-            });
-        }
-    });
-}
-
-function abrirModalSuspendidas() {
-    let modal = new bootstrap.Modal(document.getElementById('modalSuspendidas'));
-    document.getElementById('listaSuspendidasBody').innerHTML = '<div class="p-4 text-center"><div class="spinner-border text-warning"></div><div class="mt-2">Cargando ventas...</div></div>';
-    modal.show();
-
-    $.get('acciones/suspender_listar.php', function(html) {
-        document.getElementById('listaSuspendidasBody').innerHTML = html;
-    });
-}
-
-function recuperarVentaId(id) {
-    Swal.fire({
-        title: '¿Retomar esta venta?',
-        text: "Se sumará a lo que tengas en el carrito actual.",
-        icon: 'question',
-        showCancelButton: true,
-        confirmButtonText: 'Sí, Retomar',
-        confirmButtonColor: '#0dcaf0'
-    }).then((r) => {
-        if(r.isConfirmed) {
-            $.getJSON('acciones/suspender_recuperar.php', { id: id }, function(data) {
-                if(data.status === 'success') {
-                    // Agregamos los items recuperados a TU variable 'carrito'
-                    data.items.forEach(item => {
-                        let existe = carrito.find(i => i.id === parseInt(item.id));
-                        if(existe) {
-                            existe.cantidad += parseInt(item.cantidad);
-                        } else {
-                            carrito.push({
-                                id: parseInt(item.id),
-                                descripcion: item.nombre, 
-                                precio: parseFloat(item.precio),
-                                cantidad: parseInt(item.cantidad)
-                            });
-                        }
-                    });
-                    
-                    // Actualizamos la vista usando TU función render()
-                    render();
-                    
-                    // Cerramos el modal
-                    let modalEl = document.getElementById('modalSuspendidas');
-                    let modalInstance = bootstrap.Modal.getInstance(modalEl);
-                    if(modalInstance) modalInstance.hide();
-                    
-                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
-                    Toast.fire({icon: 'success', title: 'Venta recuperada exitosamente'});
                 } else {
-                    Swal.fire('Error', 'No se pudieron traer los datos', 'error');
+                    html = '<div class="p-3 text-center text-muted">No se encontraron clientes.</div>';
                 }
+                $('#lista-clientes-modal').html(html);
             });
-        }
-    });
-}
-</script>
+        });
+
+        // PROCESAR VENTA (FINALIZAR - CORREGIDO RUTA)
+        // PROCESAR VENTA (FINALIZAR)
+        // PROCESAR VENTA (FINALIZAR)
+        $('#btn-finalizar').click(function() {
+            if(carrito.length === 0) return Swal.fire('Error', 'El carrito está vacío.', 'error');
+            
+            let total = parseFloat($('#total-venta').attr('data-total-final'));
+            let metodo = $('#metodo-pago').val();
+            let idCliente = $('#id-cliente').val();
+            
+            let cupon = $('#input-cupon').val();
+            let descManual = $('#input-desc-manual').val();
+            let saldoUsado = ($('#usar-saldo').is(':checked')) ? $('#val-saldo').val() : 0;
+            let puntosUsados = $('#val-puntos-usados').val(); 
+            
+            let pagosMixtos = null;
+            if(metodo === 'Mixto') {
+                if(!pagosMixtosConfirmados) return Swal.fire('Atención', 'Debes confirmar el desglose del Pago Mixto.', 'warning');
+                pagosMixtos = JSON.stringify(pagosMixtosConfirmados);
+            }
+
+            let pagoDeuda = $('#pago-deuda-calculado').val();
+
+            let boton = $(this);
+            boton.prop('disabled', true).html('<span class="spinner-border spinner-border-sm"></span> Procesando...');
+
+            // 1. LLAMADA AL PROCESAR (ESTÁ EN ACCIONES/)
+            $.post('acciones/procesar_venta.php', {
+                items: carrito,
+                total: total,
+                metodo: metodo,
+                id_cliente: idCliente,
+                cupon_codigo: cupon,
+                desc_manual_monto: descManual,
+                saldo_favor_usado: saldoUsado,
+                pago_deuda: pagoDeuda,
+                pagos_mixtos: pagosMixtos,
+                descuento_puntos_monto: puntosUsados 
+
+            }, function(res) {
+                boton.prop('disabled', false).html('<i class="bi bi-check-lg"></i> CONFIRMAR VENTA');
+                if(res.status === 'success') {
+                    Swal.fire({
+                        icon: 'success',
+                        title: '¡Venta Exitosa!',
+                        text: 'Ticket #' + res.id_venta,
+                        showCancelButton: true,
+                        confirmButtonText: '🖨️ Imprimir Ticket',
+                        cancelButtonText: 'Nueva Venta',
+                        reverseButtons: true
+                    }).then((result) => {
+                        if (result.isConfirmed) {
+                            // 2. LLAMADA AL TICKET (ESTÁ EN LA RAÍZ)
+                            // Agregamos parámetros de ventana para que el navegador respete el tamaño
+                            window.open('ticket.php?id=' + res.id_venta, 'pop-up', 'width=300,height=600');
+                        }
+                        vaciarCarrito();
+                        location.reload(); 
+                    });
+                } else {
+                    Swal.fire('Error', res.msg, 'error');
+                }
+            }, 'json').fail(function() {
+                boton.prop('disabled', false).html('<i class="bi bi-check-lg"></i> CONFIRMAR VENTA');
+                Swal.fire('Error', 'Fallo de conexión.', 'error');
+            });
+        });
+    </script>
 
 </body>
 </html>

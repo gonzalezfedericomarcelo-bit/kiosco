@@ -148,7 +148,7 @@ if($saldo_favor_usado < 0.05) $saldo_favor_usado = 0;
             <div class="linea"></div>
         <div class="centrado" style="margin-top:10px;">
             <p style="font-size:10px; margin-bottom:5px;">¡Escaneá y sumá puntos!</p>
-            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://<?php echo $_SERVER['HTTP_HOST']; ?>/kiosco/registro_cliente.php" alt="QR Registro" style="width:80px; height:80px;">
+            <img src="https://api.qrserver.com/v1/create-qr-code/?size=100x100&data=http://<?php echo $_SERVER['HTTP_HOST']; ?>/kiosco/registro_cliente.php?ref_venta=<?php echo $venta['id']; ?>" alt="QR Registro" style="width:80px; height:80px;">
         </div>
         </div>
         

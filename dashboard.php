@@ -1,34 +1,33 @@
 <?php
-// dashboard.php - FINAL Y CORREGIDO
+// dashboard.php - FINAL (Con enlaces inteligentes)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
 
-// 1. OBTENER DATOS DE USUARIO REALES
+// 1. OBTENER DATOS DE USUARIO
 $id_user = $_SESSION['usuario_id'];
 
-// CORRECCIÓN CRÍTICA: Leemos 'id_rol' en lugar de 'rol'
 $stmtUser = $conexion->prepare("SELECT nombre_completo, usuario, id_rol FROM usuarios WHERE id = ?");
 $stmtUser->execute([$id_user]);
 $datosUsuario = $stmtUser->fetch(PDO::FETCH_ASSOC);
 
 $nombre_mostrar = !empty($datosUsuario['nombre_completo']) ? $datosUsuario['nombre_completo'] : $datosUsuario['usuario'];
-$rol_usuario = $datosUsuario['id_rol'] ?? 3; // 1:Admin, 2:Dueño, 3:Empleado
+$rol_usuario = $datosUsuario['id_rol'] ?? 3; 
 
 // 2. ESTADO DE CAJA
-$stmtCaja = $conexion->prepare("SELECT id, fecha_apertura FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
+$stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
 $stmtCaja->execute([$id_user]);
 $cajaAbierta = $stmtCaja->fetch(PDO::FETCH_ASSOC);
-
 $estado_caja = $cajaAbierta ? 'ABIERTA' : 'CERRADA';
-$clase_caja = $cajaAbierta ? 'success' : 'danger';
-$icono_caja = $cajaAbierta ? 'unlock-fill' : 'lock-fill';
 
-// 3. VENTAS DE HOY
+// 3. VENTAS Y TICKETS DE HOY
 $hoy = date('Y-m-d');
-$stmtVentas = $conexion->prepare("SELECT COALESCE(SUM(total),0) FROM ventas WHERE id_usuario = ? AND DATE(fecha) = ?");
+$stmtVentas = $conexion->prepare("SELECT COALESCE(SUM(total),0) as total, COUNT(*) as cantidad FROM ventas WHERE id_usuario = ? AND DATE(fecha) = ?");
 $stmtVentas->execute([$id_user, $hoy]);
-$vendido_hoy = $stmtVentas->fetchColumn();
+$resVentas = $stmtVentas->fetch(PDO::FETCH_ASSOC);
+
+$vendido_hoy = $resVentas['total'];
+$tickets_hoy = $resVentas['cantidad'];
 
 // 4. ALERTAS DE STOCK
 $alertas_stock = 0;
@@ -50,10 +49,34 @@ if($rol_usuario <= 2) {
         body { background-color: #f2f4f7; font-family: 'Inter', sans-serif; padding-bottom: 80px; }
         .dash-header {
             background: linear-gradient(135deg, #111 0%, #333 100%);
-            color: white; padding: 25px 20px 50px 20px;
-            border-radius: 0 0 30px 30px; margin-bottom: -40px;
+            color: white; padding: 25px 20px 30px 20px;
+            border-radius: 0 0 30px 30px; 
+            margin-bottom: 20px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
+        
+        .stat-card {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 12px;
+            padding: 10px;
+            text-align: center;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            transition: transform 0.2s, background 0.2s;
+            cursor: pointer; /* Manito al pasar el mouse */
+        }
+        .stat-card:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
+        .stat-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.75; letter-spacing: 0.5px; margin-bottom: 4px; color: white; }
+        .stat-value { font-weight: 800; font-size: 1.1rem; line-height: 1.2; color: white; }
+        
+        /* Enlaces sin decoracion */
+        .card-link { text-decoration: none; color: inherit; display: block; height: 100%; }
+
         .card-menu {
             background: white; border: none; border-radius: 16px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.03); transition: all 0.2s;
@@ -72,10 +95,10 @@ if($rol_usuario <= 2) {
             grid-column: span 2;
         }
         .card-caja .menu-sub { color: rgba(255,255,255,0.7); }
-        .grid-menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; padding: 0 15px; }
-        @media (min-width: 768px) { .grid-menu { grid-template-columns: repeat(4, 1fr); padding: 0 40px; gap: 20px; } }
+        .grid-menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
+        @media (min-width: 768px) { .grid-menu { grid-template-columns: repeat(4, 1fr); gap: 20px; } }
         .badge-notify { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; border: 2px solid white; }
-        .section-header { font-size: 0.8rem; text-transform: uppercase; font-weight: 800; color: #6c757d; margin: 25px 15px 10px; letter-spacing: 1px; }
+        .section-header { font-size: 0.8rem; text-transform: uppercase; font-weight: 800; color: #6c757d; margin: 10px 0 10px; letter-spacing: 1px; }
         #reloj { font-variant-numeric: tabular-nums; letter-spacing: 1px; }
     </style>
 </head>
@@ -84,38 +107,69 @@ if($rol_usuario <= 2) {
     <?php include 'includes/menu.php'; ?>
 
     <div class="dash-header">
-        <div class="d-flex justify-content-between align-items-start">
-            <div>
-                <h1 class="fw-bold mb-0 fs-2">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?>!</h1>
-                <p class="opacity-75 mb-0 small">
-                    <?php echo ($rol_usuario <= 2) ? 'Panel de Control Total' : 'Panel de Ventas'; ?>
-                </p>
-            </div>
-            <div class="text-end">
-                <div class="fs-4 fw-bold" id="reloj">--:--:--</div>
-                <span class="badge bg-white text-dark shadow-sm">ARGENTINA</span>
-            </div>
-        </div>
-        
-        <div class="row g-2 mt-3">
-            <div class="col-6">
-                <div class="bg-white bg-opacity-10 p-2 rounded-3 border border-white border-opacity-25 text-center">
-                    <small class="text-uppercase opacity-75" style="font-size: 0.65rem;">Ventas Hoy</small>
-                    <div class="fw-bold fs-5">$<?php echo number_format($vendido_hoy,0,',','.'); ?></div>
+        <div class="container">
+            <div class="d-flex justify-content-between align-items-start mb-3">
+                <div>
+                    <h1 class="fw-bold mb-0 fs-2">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?>!</h1>
+                    <p class="opacity-75 mb-0 small">
+                        <?php echo ($rol_usuario <= 2) ? 'Panel de Control Total' : 'Panel de Ventas'; ?>
+                    </p>
+                </div>
+                <div class="text-end">
+                    <div class="fs-4 fw-bold" id="reloj">--:--:--</div>
+                    <span class="badge bg-white text-dark shadow-sm">ARGENTINA</span>
                 </div>
             </div>
-            <div class="col-6">
-                 <div class="bg-white bg-opacity-10 p-2 rounded-3 border border-white border-opacity-25 text-center">
-                    <small class="text-uppercase opacity-75" style="font-size: 0.65rem;">Estado Caja</small>
-                    <div class="fw-bold text-<?php echo ($estado_caja=='ABIERTA')?'success':'danger'; ?> bg-white rounded-pill px-2 d-inline-block mt-1" style="font-size: 0.75rem;">
-                        <?php echo $estado_caja; ?>
-                    </div>
+            
+            <div class="row g-2">
+                <div class="col-6 col-md-3">
+                    <a href="reportes.php?filtro=hoy" class="card-link">
+                        <div class="stat-card">
+                            <small class="stat-label">Ventas Hoy</small>
+                            <div class="stat-value">$<?php echo number_format($vendido_hoy,0,',','.'); ?></div>
+                        </div>
+                    </a>
+                </div>
+                
+                <div class="col-6 col-md-3">
+                     <a href="reportes.php?filtro=hoy" class="card-link">
+                        <div class="stat-card">
+                            <small class="stat-label">Tickets</small>
+                            <div class="stat-value"><?php echo $tickets_hoy; ?></div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-6 col-md-3">
+                     <a href="historial_cajas.php" class="card-link">
+                        <div class="stat-card">
+                            <small class="stat-label">Caja</small>
+                            <div class="stat-value">
+                                <?php if($estado_caja=='ABIERTA'): ?>
+                                    <span class="text-success"><i class="bi bi-circle-fill small"></i> ABIERTA</span>
+                                <?php else: ?>
+                                    <span class="text-danger"><i class="bi bi-x-circle-fill small"></i> CERRADA</span>
+                                <?php endif; ?>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-6 col-md-3">
+                     <a href="productos.php?filtro=stock_bajo" class="card-link">
+                        <div class="stat-card">
+                            <small class="stat-label">Stock Bajo</small>
+                            <div class="stat-value <?php echo $alertas_stock > 0 ? 'text-warning' : ''; ?>">
+                                <?php echo $alertas_stock; ?> <span style="font-size:0.7em; font-weight:400;">prod.</span>
+                            </div>
+                        </div>
+                    </a>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="container-fluid p-0">
+    <div class="container pb-5">
         
         <div class="section-header">Operaciones</div>
         <div class="grid-menu">
@@ -146,7 +200,7 @@ if($rol_usuario <= 2) {
 
         <?php if($rol_usuario <= 2): ?>
             
-            <div class="section-header">Marketing</div>
+            <div class="section-header mt-4">Marketing</div>
             <div class="grid-menu">
                 <a href="admin_revista.php" class="card-menu border-bottom border-danger border-3">
                     <i class="bi bi-newspaper icon-lg text-danger"></i>
@@ -170,7 +224,7 @@ if($rol_usuario <= 2) {
                 </a>
             </div>
 
-            <div class="section-header">Administración</div>
+            <div class="section-header mt-4">Administración</div>
             <div class="grid-menu">
                 <a href="reportes.php" class="card-menu">
                     <i class="bi bi-bar-chart-line-fill icon-lg text-primary"></i>
@@ -196,7 +250,7 @@ if($rol_usuario <= 2) {
 
         <?php endif; ?>
 
-        <div class="section-header">Cuenta</div>
+        <div class="section-header mt-4">Cuenta</div>
         <div class="grid-menu pb-5">
              <a href="perfil.php" class="card-menu">
                 <i class="bi bi-person-badge icon-lg text-primary"></i>

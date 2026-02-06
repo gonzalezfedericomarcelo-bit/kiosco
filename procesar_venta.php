@@ -2,7 +2,7 @@
 // procesar_venta.php - VERSIÓN FINAL INTEGRADA Y CORREGIDA
 // Incluye: Combos Dinámicos, Pagos Mixtos, Cta Cte, Puntos, Cupones y Auditoría.
 session_start();
-require_once 'includes/db.php';
+require_once '../includes/db.php';
 header('Content-Type: application/json');
 
 // 1. VERIFICACIÓN DE SESIÓN
@@ -108,7 +108,7 @@ try {
     // ---------------------------------------------------------
     // 6. DETALLES Y DESCUENTO DE STOCK REAL
     // ---------------------------------------------------------
-    $sqlDetalle = "INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_unitario, subtotal) VALUES (?, ?, ?, ?, ?)";
+    $sqlDetalle = "INSERT INTO detalle_ventas (id_venta, id_producto, cantidad, precio_historico, subtotal) VALUES (?, ?, ?, ?, ?)";
     $stmtDetalle = $conexion->prepare($sqlDetalle);
 
     foreach($items as $item) {

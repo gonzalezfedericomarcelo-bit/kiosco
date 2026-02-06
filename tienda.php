@@ -1,6 +1,16 @@
 <?php
-// tienda.php - VERSIÓN FINAL: GRILLA CLÁSICA + BOTÓN REVISTA (PDF ELIMINADO)
+// tienda.php - VERSIÓN FINAL CON PERFIL SEPARADO
+session_start(); // Esto le da memoria al sitio
 require_once 'includes/db.php';
+
+// Esto pregunta: "¿Hay alguien conectado?"
+$cliente_logueado = null;
+if(isset($_SESSION['cliente_id'])) {
+    $stmtCli = $conexion->prepare("SELECT * FROM clientes WHERE id = ?");
+    $stmtCli->execute([$_SESSION['cliente_id']]);
+    $cliente_logueado = $stmtCli->fetch(PDO::FETCH_ASSOC);
+}
+// -------------------------
 
 // CONFIGURACIÓN
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
@@ -18,7 +28,6 @@ if($cat_filtro) { $sql .= " AND p.id_categoria = $cat_filtro"; }
 if($salud_filtro == 'celiaco') { $sql .= " AND es_apto_celiaco = 1"; }
 if($salud_filtro == 'vegano') { $sql .= " AND es_apto_vegano = 1"; }
 
-// Orden: Destacados primero
 $sql .= " ORDER BY p.es_destacado_web DESC, p.descripcion ASC";
 $productos = $conexion->query($sql)->fetchAll();
 
@@ -38,41 +47,26 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Poppins', sans-serif; background-color: #f4f6f9; padding-bottom: 80px; }
-        
-        /* BANNER */
-        .hero-banner { 
-            background: linear-gradient(<?php echo $deg_dir; ?>, <?php echo $color_pri; ?>, <?php echo $color_sec; ?>); 
-            color: white; padding: 30px 20px; border-radius: 0 0 25px 25px; margin-bottom: 20px; text-align: center; 
-        }
-        .fomo-box {
-            background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.3);
-            backdrop-filter: blur(4px); padding: 8px 15px; border-radius: 12px;
-            display: inline-block; margin-bottom: 15px;
-        }
+        .hero-banner { background: linear-gradient(<?php echo $deg_dir; ?>, <?php echo $color_pri; ?>, <?php echo $color_sec; ?>); color: white; padding: 30px 20px; border-radius: 0 0 25px 25px; margin-bottom: 20px; text-align: center; }
+        .fomo-box { background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.3); backdrop-filter: blur(4px); padding: 8px 15px; border-radius: 12px; display: inline-block; margin-bottom: 15px; }
         .fomo-timer { font-family: monospace; font-size: 1.4rem; font-weight: bold; letter-spacing: 2px; }
         .blink-dot { color: #ffeb3b; animation: parpadeo 1s infinite; }
-        
-        /* PRODUCTOS (GRILLA CLÁSICA) */
         .btn-custom { background-color: <?php echo $color_pri; ?>; color: white; border: none; }
-        .btn-custom:hover { background-color: <?php echo $color_pri; ?>; filter: brightness(90%); color: white; }
-        
         .card-producto { border: none; border-radius: 15px; overflow: hidden; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.02); transition: transform 0.2s; height: 100%; }
         .img-container { height: 180px; width: 100%; background-color: #fff; display: flex; align-items: center; justify-content: center; position: relative; }
         .img-producto { max-height: 150px; max-width: 90%; object-fit: contain; }
-        
-        /* CARRITO */
         .btn-float-cart { position: fixed; bottom: 20px; right: 20px; background-color: #25D366; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; box-shadow: 0 4px 15px rgba(37, 211, 102, 0.4); z-index: 1050; border: none; }
         .cart-counter { position: absolute; top: -5px; right: -5px; background: red; color: white; font-size: 12px; width: 20px; height: 20px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; }
         .offcanvas-bottom { height: 85vh !important; border-radius: 20px 20px 0 0; }
         .logo-tienda { height: 30px; margin-right: 5px; }
-
+        .avatar-nav { width: 32px; height: 32px; border-radius: 50%; object-fit: cover; border: 2px solid #fff; }
         @keyframes parpadeo { 50% { opacity: 0; } }
     </style>
 </head>
 <body>
 
     <nav class="navbar navbar-expand bg-white shadow-sm sticky-top">
-        <div class="container">
+        <div class="container d-flex justify-content-between align-items-center">
             <span class="navbar-brand fw-bold" style="color: <?php echo $color_pri; ?>;">
                 <?php if(!empty($conf['logo_url']) && file_exists($conf['logo_url'])): ?>
                     <img src="<?php echo $conf['logo_url']; ?>" class="logo-tienda" alt="Logo">
@@ -81,7 +75,21 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
                 <?php endif; ?>
                 <?php echo htmlspecialchars($conf['nombre_negocio']); ?>
             </span>
-            <a href="dashboard.php" class="btn btn-outline-dark btn-sm rounded-pill px-3"><i class="bi bi-person-fill"></i> Soy Dueño</a>
+
+            <div class="d-flex gap-2 align-items-center">
+                <?php if($cliente_logueado): ?>
+                    <a href="perfil_cliente.php" class="btn btn-light border rounded-pill px-2 py-1 d-flex align-items-center gap-2 text-decoration-none text-dark">
+                        <img src="<?php echo !empty($cliente_logueado['foto_perfil']) ? $cliente_logueado['foto_perfil'] : 'img/default_user.png'; ?>" class="avatar-nav">
+                        <div class="text-start lh-1 me-1 d-none d-sm-block">
+                            <div class="fw-bold" style="font-size: 0.8rem;"><?php echo explode(' ', $cliente_logueado['nombre'])[0]; ?></div>
+                            <div class="text-warning fw-bold" style="font-size: 0.7rem;"><?php echo $cliente_logueado['puntos_acumulados']; ?> pts</div>
+                        </div>
+                    </a>
+                <?php else: ?>
+                    <a href="login_cliente.php" class="btn btn-outline-primary btn-sm rounded-pill fw-bold">Ingresar</a>
+                    <a href="registro_cliente.php" class="btn btn-primary btn-sm rounded-pill fw-bold shadow-sm">Registrarme</a>
+                <?php endif; ?>
+            </div>
         </div>
     </nav>
 
@@ -101,7 +109,7 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
         
         <div class="d-flex justify-content-center gap-2 mt-3">
             <a href="revista.php" class="btn btn-warning fw-bold rounded-pill shadow-sm text-dark"><i class="bi bi-book-half"></i> Ver Revista</a>
-            </div>
+        </div>
     </div>
 
     <div class="container mb-3">
@@ -163,8 +171,8 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
             <div class="p-3 bg-light border-top">
                 <h6 class="fw-bold mb-3"><i class="bi bi-person-lines-fill"></i> Tus Datos</h6>
                 <div class="row g-2 mb-3">
-                    <div class="col-6"><input type="text" id="cliente-nombre" class="form-control form-control-sm" placeholder="Tu Nombre"></div>
-                    <div class="col-6"><input type="tel" id="cliente-dni" class="form-control form-control-sm" placeholder="DNI (Opcional)"></div>
+                    <div class="col-6"><input type="text" id="cliente-nombre" class="form-control form-control-sm" placeholder="Tu Nombre" value="<?php echo $cliente_logueado['nombre'] ?? ''; ?>"></div>
+                    <div class="col-6"><input type="tel" id="cliente-dni" class="form-control form-control-sm" placeholder="DNI (Opcional)" value="<?php echo $cliente_logueado['dni'] ?? ''; ?>"></div>
                 </div>
                 <h6 class="fw-bold mb-2"><i class="bi bi-ticket-perforated"></i> ¿Tenés Cupón?</h6>
                 <div class="input-group input-group-sm mb-2">

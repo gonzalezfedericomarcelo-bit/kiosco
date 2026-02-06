@@ -3,6 +3,7 @@
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
+require_once 'check_security.php';
 
 // VERIFICAR CAJA ABIERTA
 $usuario_id = $_SESSION['usuario_id'];
@@ -87,14 +88,7 @@ try {
                 <div class="card shadow border-0" style="position: relative; z-index: 1;">
                     <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
                         <span><i class="bi bi-cart3"></i> Carrito de Compras</span>
-                        <div>
-                            <button id="btn-recuperar" class="btn btn-sm btn-warning fw-bold d-none" onclick="recuperarVenta()">
-                                <i class="bi bi-play-circle-fill"></i> RECUPERAR (F8)
-                            </button>
-                            <button class="btn btn-sm btn-outline-secondary ms-2" onclick="pausarVenta()" title="Poner en espera (F7)">
-                                <i class="bi bi-pause-circle"></i> Pausar
-                            </button>
-                        </div>
+                        
                     </div>
                     <div class="card-body p-0">
                         <div class="tabla-ventas table-responsive">
@@ -673,50 +667,56 @@ try {
 </div>
 
 <script>
-function suspenderVentaActual() {
-    // Detectamos tu variable de carrito (probamos las 3 más comunes para asegurar)
-    let carritoData = [];
-    if(typeof productos !== 'undefined') carritoData = productos;
-    else if(typeof cart !== 'undefined') carritoData = cart;
-    else if(typeof carrito !== 'undefined') carritoData = carrito;
+// --- NUEVAS FUNCIONES DE SUSPENDER (Conectadas a tu sistema real) ---
 
-    if (carritoData.length === 0) {
-        Swal.fire('Error', 'El carrito está vacío', 'warning'); return;
+function suspenderVentaActual() {
+    // Usamos TU variable 'carrito' que ya existe en el script principal
+    if (carrito.length === 0) {
+        Swal.fire('Atención', 'El carrito está vacío, no hay nada que guardar.', 'warning'); 
+        return;
     }
 
+    // Calculamos el total recorriendo tu carrito
+    let total = 0;
+    carrito.forEach(p => total += (parseFloat(p.precio) * parseFloat(p.cantidad)));
+
     Swal.fire({
-        title: 'Dejar en Espera',
+        title: 'Dejar venta en Espera',
         input: 'text',
-        inputPlaceholder: 'Nombre o Referencia (Ej: "Señora Rubia")',
+        inputPlaceholder: 'Referencia (Ej: "Señora Rubia")',
+        inputAttributes: { maxlength: 50 },
         showCancelButton: true,
         confirmButtonColor: '#ffc107',
-        confirmButtonText: 'Suspender'
+        confirmButtonText: '<i class="bi bi-pause-circle"></i> Suspender',
+        cancelButtonText: 'Cancelar'
     }).then((result) => {
         if (result.isConfirmed) {
-            let ref = result.value || 'Sin Nombre';
-            let total = 0;
-            // Calculamos total compatible con tu estructura
-            carritoData.forEach(p => total += (parseFloat(p.precio) * parseFloat(p.cantidad)));
-
-            fetch('acciones/suspender_guardar.php', {
-                method: 'POST',
-                body: JSON.stringify({ carrito: carritoData, referencia: ref, total: total })
-            })
-            .then(r => r.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    // Vaciamos el carrito (compatible con tu sistema)
-                    if(typeof productos !== 'undefined') productos = [];
-                    if(typeof cart !== 'undefined') cart = [];
-                    if(typeof carrito !== 'undefined') carrito = [];
+            let ref = result.value || 'Sin Referencia';
+            
+            // Llamamos a los archivos que moviste a la carpeta 'acciones'
+            $.ajax({
+                url: 'acciones/suspender_guardar.php',
+                type: 'POST',
+                data: JSON.stringify({ carrito: carrito, referencia: ref, total: total }),
+                contentType: 'application/json',
+                success: function(data) {
+                    let res = (typeof data === 'string') ? JSON.parse(data) : data;
                     
-                    // Intentamos actualizar la vista (buscamos tu función de renderizado común)
-                    if(typeof renderCarrito === 'function') renderCarrito();
-                    else if(typeof actualizarTabla === 'function') actualizarTabla();
-                    else if(typeof mostrarCarrito === 'function') mostrarCarrito();
-                    else location.reload(); // Si falla, recarga segura
-
-                    Swal.fire('Suspendida', 'La venta quedó en espera', 'success');
+                    if(res.status === 'success') {
+                        vaciarCarrito(); // Usamos TU función vaciarCarrito() del script principal
+                        Swal.fire({
+                            title: '¡Suspendida!',
+                            text: 'La venta quedó guardada en el servidor.',
+                            icon: 'success',
+                            timer: 1500,
+                            showConfirmButton: false
+                        });
+                    } else {
+                        Swal.fire('Error', 'No se pudo guardar: ' + (res.msg || 'Error desconocido'), 'error');
+                    }
+                },
+                error: function() {
+                    Swal.fire('Error', 'Error de conexión con acciones/suspender_guardar.php', 'error');
                 }
             });
         }
@@ -725,51 +725,54 @@ function suspenderVentaActual() {
 
 function abrirModalSuspendidas() {
     let modal = new bootstrap.Modal(document.getElementById('modalSuspendidas'));
-    document.getElementById('listaSuspendidasBody').innerHTML = '<div class="p-4 text-center"><div class="spinner-border text-warning"></div></div>';
+    document.getElementById('listaSuspendidasBody').innerHTML = '<div class="p-4 text-center"><div class="spinner-border text-warning"></div><div class="mt-2">Cargando ventas...</div></div>';
     modal.show();
 
-    fetch('acciones/suspender_listar.php')
-        .then(r => r.text())
-        .then(html => {
-            document.getElementById('listaSuspendidasBody').innerHTML = html;
-        });
+    $.get('acciones/suspender_listar.php', function(html) {
+        document.getElementById('listaSuspendidasBody').innerHTML = html;
+    });
 }
 
 function recuperarVentaId(id) {
     Swal.fire({
         title: '¿Retomar esta venta?',
-        text: "Se cargará al carrito actual.",
+        text: "Se sumará a lo que tengas en el carrito actual.",
         icon: 'question',
         showCancelButton: true,
-        confirmButtonText: 'Sí, Retomar'
+        confirmButtonText: 'Sí, Retomar',
+        confirmButtonColor: '#0dcaf0'
     }).then((r) => {
         if(r.isConfirmed) {
-            fetch('acciones/suspender_recuperar.php?id=' + id)
-            .then(res => res.json())
-            .then(data => {
-                // Recuperamos items al carrito global
-                if(typeof productos === 'undefined' && typeof cart === 'undefined') window.productos = [];
-                let target = (typeof productos !== 'undefined') ? productos : cart;
-                
-                data.items.forEach(item => {
-                    target.push({
-                        id: parseInt(item.id),
-                        descripcion: item.nombre, // Ajuste compatible
-                        nombre: item.nombre,
-                        precio: parseFloat(item.precio),
-                        cantidad: parseInt(item.cantidad),
-                        codigo: item.codigo
+            $.getJSON('acciones/suspender_recuperar.php', { id: id }, function(data) {
+                if(data.status === 'success') {
+                    // Agregamos los items recuperados a TU variable 'carrito'
+                    data.items.forEach(item => {
+                        let existe = carrito.find(i => i.id === parseInt(item.id));
+                        if(existe) {
+                            existe.cantidad += parseInt(item.cantidad);
+                        } else {
+                            carrito.push({
+                                id: parseInt(item.id),
+                                descripcion: item.nombre, 
+                                precio: parseFloat(item.precio),
+                                cantidad: parseInt(item.cantidad)
+                            });
+                        }
                     });
-                });
-                
-                // Actualizar vista
-                if(typeof renderCarrito === 'function') renderCarrito();
-                else if(typeof actualizarTabla === 'function') actualizarTabla();
-                else location.reload();
-
-                bootstrap.Modal.getInstance(document.getElementById('modalSuspendidas')).hide();
-                const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
-                Toast.fire({icon: 'success', title: 'Venta recuperada'});
+                    
+                    // Actualizamos la vista usando TU función render()
+                    render();
+                    
+                    // Cerramos el modal
+                    let modalEl = document.getElementById('modalSuspendidas');
+                    let modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if(modalInstance) modalInstance.hide();
+                    
+                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
+                    Toast.fire({icon: 'success', title: 'Venta recuperada exitosamente'});
+                } else {
+                    Swal.fire('Error', 'No se pudieron traer los datos', 'error');
+                }
             });
         }
     });

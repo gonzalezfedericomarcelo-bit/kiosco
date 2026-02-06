@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 06-02-2026 a las 11:09:39
+-- Tiempo de generación: 06-02-2026 a las 14:10:16
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -85,7 +85,8 @@ INSERT INTO `auditoria` (`id`, `fecha`, `id_usuario`, `accion`, `detalles`) VALU
 (18, '2026-02-05 23:23:40', 1, 'VENTA_REALIZADA', 'Venta #23 | Total: $400 | Cliente: 1'),
 (19, '2026-02-05 23:28:38', 1, 'VENTA_REALIZADA', 'Venta #24 | Total: $11500 | Cliente: 1'),
 (20, '2026-02-05 23:30:50', 1, 'VENTA_REALIZADA', 'Venta #25 | Total: $2900 | Cliente: 1'),
-(21, '2026-02-05 23:33:52', 1, 'VENTA_REALIZADA', 'Venta #26 | Total: $300 | Cliente: 1');
+(21, '2026-02-05 23:33:52', 1, 'VENTA_REALIZADA', 'Venta #26 | Total: $300 | Cliente: 1'),
+(22, '2026-02-06 10:47:58', 1, 'VENTA_REALIZADA', 'Venta #27 | Total: $400 | Cliente: 1');
 
 -- --------------------------------------------------------
 
@@ -142,7 +143,8 @@ INSERT INTO `cajas_sesion` (`id`, `id_usuario`, `fecha_apertura`, `fecha_cierre`
 (3, 2, '2026-01-28 22:37:30', '2026-01-28 22:37:51', 0.00, 550.00, 600.00, -50.00, 'cerrada'),
 (4, 1, '2026-01-29 17:48:54', '2026-02-03 19:20:54', 1000.00, 20000.00, 600.00, 18400.00, 'cerrada'),
 (5, 2, '2026-02-03 19:19:43', NULL, 2000.00, NULL, 0.00, NULL, 'abierta'),
-(6, 1, '2026-02-03 19:20:59', NULL, 1000.00, NULL, 0.00, NULL, 'abierta');
+(6, 1, '2026-02-03 19:20:59', '2026-02-06 09:06:11', 1000.00, 0.00, 99025.00, -100025.00, 'cerrada'),
+(7, 1, '2026-02-06 10:47:56', NULL, 1000.00, NULL, 0.00, NULL, 'abierta');
 
 -- --------------------------------------------------------
 
@@ -363,7 +365,8 @@ INSERT INTO `detalle_ventas` (`id`, `id_venta`, `id_producto`, `cantidad`, `prec
 (27, 23, 11, 1.000, 400.00, 400.00),
 (28, 24, 4, 1.000, 11500.00, 11500.00),
 (29, 25, 19, 1.000, 2900.00, 2900.00),
-(30, 26, 12, 1.000, 300.00, 300.00);
+(30, 26, 12, 1.000, 300.00, 300.00),
+(31, 27, 11, 1.000, 400.00, 400.00);
 
 -- --------------------------------------------------------
 
@@ -615,12 +618,12 @@ INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larg
 (8, '7790580123456', 'Alfajor Guaymallén Dulce de Leche', NULL, 2, 1, 'unitario', 300.00, 600.00, NULL, 196.000, 24.000, 'uploads/prod_1770255417_877.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
 (9, '7790580999999', 'Alfajor Jorgito Chocolate', NULL, 2, 1, 'unitario', 600.00, 1000.00, NULL, 38.000, 12.000, 'uploads/prod_1770255413_500.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
 (10, '7790060023654', 'Chocolate Milka Leger 100g', NULL, 2, 1, 'unitario', 1500.00, 2500.00, NULL, 28.000, 5.000, 'uploads/prod_1770255406_507.png', 0, 1, 0, 1, NULL, NULL, 0, 0),
-(11, '7790456000021', 'Pastillas DRF Menta', NULL, 2, 1, 'unitario', 200.00, 400.00, NULL, 93.000, 10.000, 'uploads/prod_1770255400_348.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
+(11, '7790456000021', 'Pastillas DRF Menta', NULL, 2, 1, 'unitario', 200.00, 400.00, NULL, 92.000, 10.000, 'uploads/prod_1770255400_348.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (12, '7791111222233', 'Turrón Arcor Misky', NULL, 2, 1, 'unitario', 150.00, 300.00, NULL, 497.000, 50.000, 'uploads/prod_1770255394_844.png', 0, 0, 1, 1, NULL, NULL, 0, 0),
 (13, '7790999000111', 'Chicle Beldent Menta 8u', NULL, 2, 1, 'unitario', 400.00, 800.00, NULL, 59.000, 20.000, 'uploads/prod_1770255584_118.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
 (14, '7790040866666', 'Papas Fritas Lays Clásicas 85g', NULL, 3, 1, 'unitario', 1200.00, 2100.00, NULL, 10.000, 10.000, 'uploads/prod_1770255381_602.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (15, '7790040855555', 'Doritos Queso 85g', NULL, 3, 1, 'unitario', 1300.00, 2300.00, NULL, 3.000, 10.000, 'uploads/prod_1770255375_280.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
-(16, '7794444555566', 'Yerba Playadito 500g', NULL, 3, 1, 'unitario', 1800.00, 2800.00, NULL, 38.000, 10.000, 'uploads/prod_1770255364_257.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
+(16, '7794444555566', 'Yerba Playadito 500g', NULL, 3, 1, 'unitario', 1800.00, 2800.00, 1500.00, 38.000, 10.000, 'uploads/prod_1770255364_257.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
 (17, '7792222333344', 'Galletitas 9 de Oro Clásicas', NULL, 3, 1, 'unitario', 800.00, 1400.00, NULL, 25.000, 5.000, 'uploads/prod_1770253556_135.png', 0, 0, 1, 1, '2026-03-07', 40, 0, 0),
 (18, '7790000000001', 'Marlboro Box 20', NULL, 4, 1, 'unitario', 2500.00, 3200.00, NULL, 92.000, 20.000, 'uploads/prod_1770255357_603.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
 (19, '7790000000002', 'Philip Morris Box 20', NULL, 4, 1, 'unitario', 2300.00, 2900.00, NULL, 77.000, 20.000, 'uploads/prod_1770252536_715.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
@@ -871,7 +874,8 @@ INSERT INTO `ventas` (`id`, `codigo_ticket`, `id_caja_sesion`, `id_usuario`, `id
 (23, NULL, 6, 1, 1, '2026-02-05 23:23:40', 400.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (24, NULL, 6, 1, 1, '2026-02-05 23:28:38', 11500.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (25, NULL, 6, 1, 1, '2026-02-05 23:30:50', 2900.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
-(26, NULL, 6, 1, 9, '2026-02-05 23:33:52', 300.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
+(26, NULL, 6, 1, 9, '2026-02-05 23:33:52', 300.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(27, NULL, 7, 1, 1, '2026-02-06 10:47:58', 400.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
 
 -- --------------------------------------------------------
 
@@ -1129,7 +1133,7 @@ ALTER TABLE `afip_config`
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=22;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT de la tabla `bienes_uso`
@@ -1141,7 +1145,7 @@ ALTER TABLE `bienes_uso`
 -- AUTO_INCREMENT de la tabla `cajas_sesion`
 --
 ALTER TABLE `cajas_sesion`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=7;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
 
 --
 -- AUTO_INCREMENT de la tabla `categorias`
@@ -1177,7 +1181,7 @@ ALTER TABLE `cupones`
 -- AUTO_INCREMENT de la tabla `detalle_ventas`
 --
 ALTER TABLE `detalle_ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=31;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=32;
 
 --
 -- AUTO_INCREMENT de la tabla `devoluciones`
@@ -1273,7 +1277,7 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `ventas`
 --
 ALTER TABLE `ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=27;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=28;
 
 --
 -- AUTO_INCREMENT de la tabla `ventas_suspendidas`

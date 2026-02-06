@@ -1,35 +1,59 @@
 <?php
-// tienda.php - VERSIÓN FINAL CON PERFIL SEPARADO
-session_start(); // Esto le da memoria al sitio
+// tienda.php - VERSIÓN BLINDADA (SEGURIDAD FIX)
+session_start();
 require_once 'includes/db.php';
 
-// Esto pregunta: "¿Hay alguien conectado?"
+// VERIFICAR USUARIO LOGUEADO
 $cliente_logueado = null;
 if(isset($_SESSION['cliente_id'])) {
     $stmtCli = $conexion->prepare("SELECT * FROM clientes WHERE id = ?");
     $stmtCli->execute([$_SESSION['cliente_id']]);
     $cliente_logueado = $stmtCli->fetch(PDO::FETCH_ASSOC);
 }
-// -------------------------
 
 // CONFIGURACIÓN
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 
-// PRODUCTOS
+// CATEGORIAS
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
+
+// PARAMETROS DE FILTRO
 $filtro = $_GET['q'] ?? '';
 $cat_filtro = $_GET['cat'] ?? '';
 $salud_filtro = $_GET['salud'] ?? ''; 
 
-$sql = "SELECT p.*, c.nombre as categoria FROM productos p JOIN categorias c ON p.id_categoria = c.id WHERE p.activo = 1 AND p.stock_actual > 0";
+// CONSTRUCCIÓN SEGURA DE LA CONSULTA (FIX SQL INJECTION)
+// Usamos marcadores de posición (?) en lugar de meter variables directo
+$sql = "SELECT p.*, c.nombre as categoria 
+        FROM productos p 
+        JOIN categorias c ON p.id_categoria = c.id 
+        WHERE p.activo = 1 AND p.stock_actual > 0";
 
-if($filtro) { $sql .= " AND p.descripcion LIKE '%$filtro%'"; }
-if($cat_filtro) { $sql .= " AND p.id_categoria = $cat_filtro"; }
-if($salud_filtro == 'celiaco') { $sql .= " AND es_apto_celiaco = 1"; }
-if($salud_filtro == 'vegano') { $sql .= " AND es_apto_vegano = 1"; }
+$params = [];
+
+if($filtro) { 
+    $sql .= " AND p.descripcion LIKE ?"; 
+    $params[] = "%$filtro%"; // El % se agrega acá, no en el SQL
+}
+
+if($cat_filtro) { 
+    $sql .= " AND p.id_categoria = ?"; 
+    $params[] = $cat_filtro; 
+}
+
+if($salud_filtro == 'celiaco') { 
+    $sql .= " AND es_apto_celiaco = 1"; 
+}
+if($salud_filtro == 'vegano') { 
+    $sql .= " AND es_apto_vegano = 1"; 
+}
 
 $sql .= " ORDER BY p.es_destacado_web DESC, p.descripcion ASC";
-$productos = $conexion->query($sql)->fetchAll();
+
+// EJECUCIÓN SEGURA
+$stmt = $conexion->prepare($sql);
+$stmt->execute($params);
+$productos = $stmt->fetchAll();
 
 // DISEÑO
 $color_pri = $conf['color_botones'] ?? '#0d6efd';

@@ -1,5 +1,5 @@
 <?php
-// dashboard.php - FINAL (Con enlaces inteligentes)
+// dashboard.php - VERSIÓN FINAL (Con Alertas de Vencimiento)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -29,12 +29,45 @@ $resVentas = $stmtVentas->fetch(PDO::FETCH_ASSOC);
 $vendido_hoy = $resVentas['total'];
 $tickets_hoy = $resVentas['cantidad'];
 
-// 4. ALERTAS DE STOCK
+// 4. ALERTAS (STOCK Y VENCIMIENTOS)
 $alertas_stock = 0;
+$alertas_vencimiento = 0;
+
 if($rol_usuario <= 2) {
+    // A. Alerta de Stock Bajo
     $stmtStock = $conexion->query("SELECT COUNT(*) FROM productos WHERE stock_actual <= stock_minimo AND activo = 1");
     $alertas_stock = $stmtStock->fetchColumn();
+    // 5. ALERTAS VENCIMIENTOS (AGREGADO)
+$alertas_vencimiento = 0;
+if($rol_usuario <= 2) {
+    // Busca configuración o usa 30 días por defecto
+    $stmtConf = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1");
+    $conf = $stmtConf->fetch(PDO::FETCH_ASSOC);
+    $dias_venc = $conf['dias_alerta_vencimiento'] ?? 30;
+    
+    // Cuenta productos que vencen pronto
+    $sqlVenc = "SELECT COUNT(*) FROM productos WHERE activo = 1 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL $dias_venc DAY)";
+    $alertas_vencimiento = $conexion->query($sqlVenc)->fetchColumn();
 }
+
+    // B. Alerta de Vencimientos (NUEVO)
+    // 1. Buscamos la config general de dias (ej. 30 dias)
+    $stmtConf = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1");
+    $conf = $stmtConf->fetch(PDO::FETCH_ASSOC);
+    $dias_global = $conf['dias_alerta_vencimiento'] ?? 30;
+
+    // 2. Contamos productos que vencen entre HOY y (HOY + DIAS)
+    // La logica COALESCE(dias_alerta, ?) usa la alerta personalizada del producto si existe, sino la global
+    $sqlVenc = "SELECT COUNT(*) FROM productos 
+                WHERE activo = 1 
+                AND fecha_vencimiento IS NOT NULL 
+                AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL COALESCE(dias_alerta, ?) DAY)";
+    
+    $stmtVenc = $conexion->prepare($sqlVenc);
+    $stmtVenc->execute([$dias_global]);
+    $alertas_vencimiento = $stmtVenc->fetchColumn();
+}
+
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -68,13 +101,12 @@ if($rol_usuario <= 2) {
             align-items: center;
             backdrop-filter: blur(5px);
             transition: transform 0.2s, background 0.2s;
-            cursor: pointer; /* Manito al pasar el mouse */
+            cursor: pointer;
         }
         .stat-card:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
         .stat-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.75; letter-spacing: 0.5px; margin-bottom: 4px; color: white; }
         .stat-value { font-weight: 800; font-size: 1.1rem; line-height: 1.2; color: white; }
         
-        /* Enlaces sin decoracion */
         .card-link { text-decoration: none; color: inherit; display: block; height: 100%; }
 
         .card-menu {
@@ -100,6 +132,10 @@ if($rol_usuario <= 2) {
         .badge-notify { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; border: 2px solid white; }
         .section-header { font-size: 0.8rem; text-transform: uppercase; font-weight: 800; color: #6c757d; margin: 10px 0 10px; letter-spacing: 1px; }
         #reloj { font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+        
+        /* Estilo especial para vencimientos */
+        .text-pulse { animation: pulse-red 2s infinite; }
+        @keyframes pulse-red { 0% { color: #fff; } 50% { color: #ff8b94; } 100% { color: #fff; } }
     </style>
 </head>
 <body>
@@ -121,17 +157,17 @@ if($rol_usuario <= 2) {
                 </div>
             </div>
             
-            <div class="row g-2">
-                <div class="col-6 col-md-3">
-                    <a href="reportes.php?filtro=hoy" class="card-link">
+            <div class="row g-2 justify-content-center">
+                <div class="col-4 col-md-2">
+                    <a href="reportes.php?set_rango=hoy&f_inicio=<?php echo date('Y-m-d'); ?>&f_fin=<?php echo date('Y-m-d'); ?>&id_usuario=" class="card-link">
                         <div class="stat-card">
-                            <small class="stat-label">Ventas Hoy</small>
+                            <small class="stat-label">Ventas de Hoy</small>
                             <div class="stat-value">$<?php echo number_format($vendido_hoy,0,',','.'); ?></div>
                         </div>
                     </a>
                 </div>
                 
-                <div class="col-6 col-md-3">
+                <div class="col-4 col-md-2">
                      <a href="reportes.php?filtro=hoy" class="card-link">
                         <div class="stat-card">
                             <small class="stat-label">Tickets</small>
@@ -140,15 +176,15 @@ if($rol_usuario <= 2) {
                     </a>
                 </div>
 
-                <div class="col-6 col-md-3">
+                <div class="col-4 col-md-2">
                      <a href="historial_cajas.php" class="card-link">
                         <div class="stat-card">
                             <small class="stat-label">Caja</small>
                             <div class="stat-value">
                                 <?php if($estado_caja=='ABIERTA'): ?>
-                                    <span class="text-success"><i class="bi bi-circle-fill small"></i> ABIERTA</span>
+                                    <span class="text-success"><i class="bi bi-circle-fill small"></i> ON</span>
                                 <?php else: ?>
-                                    <span class="text-danger"><i class="bi bi-x-circle-fill small"></i> CERRADA</span>
+                                    <span class="text-danger"><i class="bi bi-x-circle-fill small"></i> OFF</span>
                                 <?php endif; ?>
                             </div>
                         </div>
@@ -160,11 +196,24 @@ if($rol_usuario <= 2) {
                         <div class="stat-card">
                             <small class="stat-label">Stock Bajo</small>
                             <div class="stat-value <?php echo $alertas_stock > 0 ? 'text-warning' : ''; ?>">
-                                <?php echo $alertas_stock; ?> <span style="font-size:0.7em; font-weight:400;">prod.</span>
+                                <?php echo $alertas_stock; ?> <span style="font-size:0.7em; font-weight:400;">items</span>
                             </div>
                         </div>
                     </a>
                 </div>
+
+                <?php if($rol_usuario <= 2): ?>
+                <div class="col-6 col-md-3">
+                     <a href="productos.php?filtro=vencimientos" class="card-link">
+                         <div class="stat-card" style="<?php echo $alertas_vencimiento > 0 ? 'background: rgba(220, 53, 69, 0.25); border-color: rgba(220, 53, 69, 0.5);' : ''; ?>">
+                            <small class="stat-label <?php echo $alertas_vencimiento > 0 ? 'text-danger fw-bold' : ''; ?>">Vencimientos</small>
+                            <div class="stat-value <?php echo $alertas_vencimiento > 0 ? 'text-pulse' : ''; ?>">
+                                <?php echo $alertas_vencimiento; ?> <span style="font-size:0.7em; font-weight:400;">próx.</span>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+                <?php endif; ?>
             </div>
         </div>
     </div>

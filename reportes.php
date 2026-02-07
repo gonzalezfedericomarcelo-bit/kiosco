@@ -151,7 +151,7 @@ $usuarios_db = $conexion->query("SELECT * FROM usuarios")->fetchAll();
                 </div>
             </div>
         </div>
-
+        
         <div class="card shadow-sm border-0">
             <div class="card-header bg-white py-3">
                 <h6 class="m-0 fw-bold">Detalle de Operaciones</h6>

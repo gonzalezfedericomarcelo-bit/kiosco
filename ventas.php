@@ -432,16 +432,23 @@ try {
                             let aviso = stock <= 0 ? '(AGOTADO)' : '';
                             
                             // CORRECCIÓN CRÍTICA DE COMILLAS:
-                            let jsonProducto = JSON.stringify(p).replace(/'/g, "&#39;");
+                            let etiquetaStock = '';
+                            if(p.tipo === 'combo') {
+                                if(stock > 0) etiquetaStock = '<span class="badge bg-success">OFERTA ACTIVA</span>';
+                                else etiquetaStock = '<span class="badge bg-danger">OFERTA VENCIDA</span>';
+                            } else {
+                                // Producto normal
+                                etiquetaStock = `<div class="small ${colorStock}" style="font-size:0.75rem;">Stock: ${stock}</div>`;
+                            }
 
                             html += `
                             <div class="item-resultado d-flex justify-content-between align-items-center" onclick='seleccionarProducto(${jsonProducto})'>
                                 <div>
                                     <div class="fw-bold">${p.descripcion} <small class="text-danger">${aviso}</small></div>
-                                    <div class="small ${colorStock}" style="font-size:0.75rem;">Stock: ${stock}</div>
+                                    ${etiquetaStock}
                                 </div>
                                 <span class="badge bg-primary rounded-pill">$${p.precio_venta}</span>
-                            </div>`; 
+                            </div>`;
                         });
                         $('#lista-resultados').html(html).show();
                     }

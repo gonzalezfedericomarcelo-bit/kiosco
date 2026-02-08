@@ -1,37 +1,38 @@
 <?php
-// procesar_venta.php - VERSIÓN FINAL INTEGRADA Y CORREGIDA
-// Incluye: Combos Dinámicos, Pagos Mixtos, Cta Cte, Puntos, Cupones y Auditoría.
+// procesar_venta.php - VERSIÓN BLINDADA (Corregido error fatal de fetch object/array)
+// Se desactiva el reporte de errores en pantalla para no romper el JSON con Warnings
+error_reporting(0); 
+ini_set('display_errors', 0);
+
 session_start();
 require_once '../includes/db.php';
 header('Content-Type: application/json');
 
-// 1. VERIFICACIÓN DE SESIÓN
-if (!isset($_SESSION['usuario_id'])) { 
-    echo json_encode(['status'=>'error', 'msg'=>'La sesión ha expirado. Inicia sesión nuevamente.']); 
-    exit; 
-}
-
-// 2. RECEPCIÓN DE DATOS
-$items = $_POST['items'] ?? [];
-$metodo = $_POST['metodo'] ?? 'Efectivo'; // Efectivo, Tarjeta, Mixto, CtaCorriente
-$total = $_POST['total'] ?? 0;
-$id_cliente = $_POST['id_cliente'] ?? 1; // 1 = Consumidor Final
-$user_id = $_SESSION['usuario_id'];
-
-// Datos extra (Cupones, Descuentos, Saldos)
-$cupon_codigo = $_POST['cupon_codigo'] ?? null;
-$desc_cupon_monto = $_POST['desc_cupon_monto'] ?? 0;
-$desc_manual_monto = $_POST['desc_manual_monto'] ?? 0;
-$saldo_favor_usado = $_POST['saldo_favor_usado'] ?? 0;
-$pago_deuda = $_POST['pago_deuda'] ?? 0;
-$pagos_mixtos = $_POST['pagos_mixtos'] ?? null; // Array con el desglose si es mixto
-
-if(empty($items)) { 
-    echo json_encode(['status'=>'error', 'msg'=>'El carrito está vacío.']); 
-    exit; 
-}
-
 try {
+    // 1. VERIFICACIÓN DE SESIÓN
+    if (!isset($_SESSION['usuario_id'])) { 
+        throw new Exception('La sesión ha expirado. Inicia sesión nuevamente.'); 
+    }
+
+    // 2. RECEPCIÓN DE DATOS
+    $items = $_POST['items'] ?? [];
+    $metodo = $_POST['metodo'] ?? 'Efectivo';
+    $total = $_POST['total'] ?? 0;
+    $id_cliente = $_POST['id_cliente'] ?? 1; 
+    $user_id = $_SESSION['usuario_id'];
+
+    // Datos extra
+    $cupon_codigo = $_POST['cupon_codigo'] ?? null;
+    $desc_cupon_monto = $_POST['desc_cupon_monto'] ?? 0;
+    $desc_manual_monto = $_POST['desc_manual_monto'] ?? 0;
+    $saldo_favor_usado = $_POST['saldo_favor_usado'] ?? 0;
+    $pago_deuda = $_POST['pago_deuda'] ?? 0;
+    $pagos_mixtos = $_POST['pagos_mixtos'] ?? null; 
+
+    if(empty($items)) { 
+        throw new Exception('El carrito está vacío.'); 
+    }
+
     $conexion->beginTransaction();
 
     // ---------------------------------------------------------
@@ -50,8 +51,8 @@ try {
     // 4. VALIDACIÓN DE STOCK (PREVIA A LA VENTA)
     // ---------------------------------------------------------
     foreach($items as $item) {
-        // Consultamos datos frescos del producto
-        $stmtProd = $conexion->prepare("SELECT descripcion, stock_actual, tipo FROM productos WHERE id = ?");
+        // Consultamos datos seguros con FETCH_ASSOC
+        $stmtProd = $conexion->prepare("SELECT descripcion, stock_actual, tipo, codigo_barras FROM productos WHERE id = ?");
         $stmtProd->execute([$item['id']]);
         $prodDB = $stmtProd->fetch(PDO::FETCH_ASSOC);
 
@@ -59,35 +60,61 @@ try {
 
         $cantidad_venta = $item['cantidad'];
 
-        // LÓGICA DE COMBOS: Validar stock de los hijos (Ingredientes)
+        // LÓGICA DE COMBOS
         if ($prodDB['tipo'] === 'combo') {
-            // Usamos tu tabla 'combo_items'
-            $stmtHijos = $conexion->prepare("
-                SELECT p.descripcion, p.stock_actual, ci.cantidad as cant_necesaria 
-                FROM combo_items ci 
-                JOIN productos p ON ci.id_producto = p.id 
-                WHERE ci.id_combo = ?
-            ");
-            $stmtHijos->execute([$item['id']]);
-            $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
+            $id_combo_real = null;
+            
+            // A. Buscar por código de barras
+            if (!empty($prodDB['codigo_barras'])) { 
+                 $stmtLink = $conexion->prepare("SELECT id FROM combos WHERE codigo_barras = ? LIMIT 1");
+                 $stmtLink->execute([$prodDB['codigo_barras']]); 
+                 $resLink = $stmtLink->fetch(PDO::FETCH_ASSOC);
+                 if($resLink) $id_combo_real = $resLink['id'];
+            }
 
-            if (empty($hijos)) {
-                // Si es un combo vacío, validamos el stock del combo en sí (fallback)
-                if ($prodDB['stock_actual'] < $cantidad_venta) {
-                    throw new Exception("Stock insuficiente para el combo '{$prodDB['descripcion']}'.");
+            // B. Buscar por nombre exacto (Fallback)
+            if (!$id_combo_real) {
+                $stmtLink = $conexion->prepare("SELECT id FROM combos WHERE nombre = ? LIMIT 1");
+                $stmtLink->execute([$prodDB['descripcion']]);
+                $resLink = $stmtLink->fetch(PDO::FETCH_ASSOC);
+                if($resLink) $id_combo_real = $resLink['id'];
+            }
+
+            // Validar Stock Hijos
+            if ($id_combo_real) {
+                $stmtHijos = $conexion->prepare("
+                    SELECT p.descripcion, p.stock_actual, ci.cantidad as cant_necesaria 
+                    FROM combo_items ci 
+                    JOIN productos p ON ci.id_producto = p.id 
+                    WHERE ci.id_combo = ?
+                ");
+                $stmtHijos->execute([$id_combo_real]);
+                $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
+
+                if (!empty($hijos)) {
+                    foreach ($hijos as $hijo) {
+                        $total_necesario = $hijo['cant_necesaria'] * $cantidad_venta;
+                        // Forzamos floatval para evitar errores de comparación numérica
+                        if (floatval($hijo['stock_actual']) < $total_necesario) {
+                            throw new Exception("Falta mercadería para el combo: '{$hijo['descripcion']}'. (Stock: ".floatval($hijo['stock_actual']).", Necesitas: $total_necesario)");
+                        }
+                    }
+                } else {
+                    // Combo vacío: Validar stock padre
+                    if (floatval($prodDB['stock_actual']) < $cantidad_venta) {
+                        throw new Exception("Stock insuficiente para el combo '{$prodDB['descripcion']}'.");
+                    }
                 }
             } else {
-                foreach ($hijos as $hijo) {
-                    $total_necesario = $hijo['cant_necesaria'] * $cantidad_venta;
-                    if ($hijo['stock_actual'] < $total_necesario) {
-                        throw new Exception("No hay suficiente '{$hijo['descripcion']}' para armar el combo. (Stock: {$hijo['stock_actual']}, Necesario: $total_necesario)");
-                    }
+                 // No se encontró enlace: Validar stock padre
+                 if (floatval($prodDB['stock_actual']) < $cantidad_venta) {
+                    throw new Exception("Stock insuficiente para '{$prodDB['descripcion']}' (Link Combo no encontrado).");
                 }
             }
         } 
-        // LÓGICA PRODUCTO SIMPLE (Unitario)
+        // LÓGICA PRODUCTO SIMPLE
         elseif ($prodDB['tipo'] !== 'pesable') { 
-            if ($prodDB['stock_actual'] < $cantidad_venta) {
+            if (floatval($prodDB['stock_actual']) < $cantidad_venta) {
                 throw new Exception("Stock insuficiente para '{$prodDB['descripcion']}'. (Stock: ".floatval($prodDB['stock_actual']).")");
             }
         }
@@ -113,80 +140,76 @@ try {
 
     foreach($items as $item) {
         $subtotal = $item['precio'] * $item['cantidad'];
-        
-        // Guardar línea en el ticket
         $stmtDetalle->execute([$venta_id, $item['id'], $item['cantidad'], $item['precio'], $subtotal]);
 
-        // VERIFICAR TIPO PARA DESCONTAR STOCK
-        $stmtTipo = $conexion->prepare("SELECT tipo FROM productos WHERE id = ?");
+        // Verificamos tipo nuevamente para estar seguros
+        $stmtTipo = $conexion->prepare("SELECT tipo, codigo_barras, descripcion FROM productos WHERE id = ?");
         $stmtTipo->execute([$item['id']]);
-        $tipo = $stmtTipo->fetchColumn();
+        $dProd = $stmtTipo->fetch(PDO::FETCH_ASSOC); // AQUÍ ESTABA EL ERROR: Faltaba FETCH_ASSOC
         
-        if ($tipo === 'combo') {
-            // DESCUENTO RECURSIVO (Ingredientes)
-            $stmtHijos = $conexion->prepare("SELECT id_producto, cantidad FROM combo_items WHERE id_combo = ?");
-            $stmtHijos->execute([$item['id']]);
-            $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
+        if ($dProd && $dProd['tipo'] === 'combo') {
+            $id_combo_real = null;
             
-            if (!empty($hijos)) {
-                foreach ($hijos as $hijo) {
-                    $descuento_real = $hijo['cantidad'] * $item['cantidad'];
-                    $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$descuento_real, $hijo['id_producto']]);
+            // Buscar ID Combo (Misma lógica segura)
+            if(!empty($dProd['codigo_barras'])) {
+                $stmtLink = $conexion->prepare("SELECT id FROM combos WHERE codigo_barras = ? LIMIT 1");
+                $stmtLink->execute([$dProd['codigo_barras']]);
+                $res = $stmtLink->fetch(PDO::FETCH_ASSOC); // AQUÍ ESTABA EL ERROR: Faltaba FETCH_ASSOC
+                if($res) $id_combo_real = $res['id'];
+            }
+            if(!$id_combo_real) {
+                $stmtLink = $conexion->prepare("SELECT id FROM combos WHERE nombre = ? LIMIT 1");
+                $stmtLink->execute([$dProd['descripcion']]);
+                $res = $stmtLink->fetch(PDO::FETCH_ASSOC); // AQUÍ ESTABA EL ERROR: Faltaba FETCH_ASSOC
+                if($res) $id_combo_real = $res['id'];
+            }
+
+            // Descontar
+            $descontado_ingredientes = false;
+            if ($id_combo_real) {
+                $stmtHijos = $conexion->prepare("SELECT id_producto, cantidad FROM combo_items WHERE id_combo = ?");
+                $stmtHijos->execute([$id_combo_real]);
+                $hijos = $stmtHijos->fetchAll(PDO::FETCH_ASSOC);
+                
+                if (!empty($hijos)) {
+                    foreach ($hijos as $hijo) {
+                        $descuento_real = $hijo['cantidad'] * $item['cantidad'];
+                        $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$descuento_real, $hijo['id_producto']]);
+                    }
+                    $descontado_ingredientes = true;
                 }
-            } else {
-                // Si el combo no tiene ingredientes definidos, descontamos el combo
+            }
+            
+            // Si no se descontaron ingredientes (por error de link o vacío), descontamos el padre
+            if (!$descontado_ingredientes) {
                 $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$item['cantidad'], $item['id']]);
             }
+
         } else {
-            // DESCUENTO DIRECTO
+            // Producto Normal
             $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$item['cantidad'], $item['id']]);
         }
     }
 
     // ---------------------------------------------------------
-    // 7. PAGOS MIXTOS (REGISTRO DETALLADO)
+    // 7. PAGOS MIXTOS / CTA CTE / PUNTOS (Igual que antes)
     // ---------------------------------------------------------
     if($metodo === 'Mixto' && !empty($pagos_mixtos)) {
         $stmtMix = $conexion->prepare("INSERT INTO pagos_ventas (id_venta, metodo_pago, monto) VALUES (?, ?, ?)");
-        // Asumimos que pagos_mixtos viene como objeto/array JSON decodificado
-        // Si viene como string JSON, decodificarlo:
         if (is_string($pagos_mixtos)) $pagos_mixtos = json_decode($pagos_mixtos, true);
-
         foreach($pagos_mixtos as $metodo_nombre => $monto) {
-            if($monto > 0) {
-                $stmtMix->execute([$venta_id, $metodo_nombre, $monto]);
-            }
+            if($monto > 0) $stmtMix->execute([$venta_id, $metodo_nombre, $monto]);
         }
     }
 
-    // ---------------------------------------------------------
-    // 8. GESTIÓN DE CLIENTES (FIDELIZACIÓN Y CTA CTE)
-    // ---------------------------------------------------------
     if ($id_cliente > 1) { 
-        
-        // A. CUENTA CORRIENTE (FIADO)
         if ($metodo === 'CtaCorriente') {
-            // Si usó saldo a favor, solo debe el resto
             $monto_a_deber = $total - $saldo_favor_usado; 
-            
             if($monto_a_deber > 0) {
-                 // Registrar movimiento DEBE
                  $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, descripcion, fecha) VALUES (?, ?, ?, 'debe', ?, 'Compra Fiado Ticket #$venta_id', ?)")->execute([$id_cliente, $venta_id, $user_id, $monto_a_deber, $fecha_actual]);
-                 
-                 // Actualizar deuda global del cliente (saldo_actual suele ser la deuda o saldo neto)
-                 // Asumiremos que si tienes 'saldo_deudor' en clientes, usamos ese. O saldo_actual.
-                 // Usaré una query genérica segura:
-                 // Verificar columnas de la tabla clientes:
-                 // Si usas 'saldo_deudor' para deuda:
-                 // $conexion->prepare("UPDATE clientes SET saldo_deudor = saldo_deudor + ? WHERE id = ?")->execute([$monto_a_deber, $id_cliente]);
-                 // Si usas lógica contable única 'saldo_calculado', no necesitas update, pero si tienes campo caché:
-                 // Por compatibilidad con tu código previo:
-                 // $conexion->prepare("UPDATE clientes SET saldo_actual = saldo_actual + ? WHERE id = ?")->execute([$monto_a_deber, $id_cliente]);
             }
         }
-
-        // B. SUMA DE PUNTOS
-        // Obtener configuración de puntos
+        
         $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
         $ratio = $conf['dinero_por_punto'] ?? 100;
         if ($ratio > 0) {
@@ -196,37 +219,30 @@ try {
             }
         }
         
-        // C. DESCUENTO DE SALDO A FAVOR USADO
         if ($saldo_favor_usado > 0) {
             $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor - ? WHERE id = ?")->execute([$saldo_favor_usado, $id_cliente]);
-            // Registrar el uso en movimientos para trazabilidad
-            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, descripcion, fecha) VALUES (?, ?, ?, 'haber', ?, 'Uso Saldo a Favor', ?)")->execute([$id_cliente, $venta_id, $user_id, $saldo_favor_usado * -1, $fecha_actual]); // Ajuste contable
+            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, descripcion, fecha) VALUES (?, ?, ?, 'haber', ?, 'Uso Saldo a Favor', ?)")->execute([$id_cliente, $venta_id, $user_id, $saldo_favor_usado * -1, $fecha_actual]);
         }
 
-        // D. PAGO DE DEUDA (SI PAGÓ DE MÁS O ESPECÍFICO)
         if ($pago_deuda > 0) {
             $concepto = "Pago a cuenta en Ticket #" . $venta_id;
-            $stmtDeuda = $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, descripcion, fecha) VALUES (?, ?, ?, 'haber', ?, ?, ?)");
-            $stmtDeuda->execute([$id_cliente, $venta_id, $user_id, $pago_deuda, $concepto, $fecha_actual]);
+            $conexion->prepare("INSERT INTO movimientos_cc (id_cliente, id_venta, id_usuario, tipo, monto, descripcion, fecha) VALUES (?, ?, ?, 'haber', ?, ?, ?)")->execute([$id_cliente, $venta_id, $user_id, $pago_deuda, $concepto, $fecha_actual]);
         }
     }
     
-    // ---------------------------------------------------------
-    // 9. AUDITORÍA FORENSE
-    // ---------------------------------------------------------
+    // Auditoría
     $detalles_audit = "Venta #$venta_id | Total: $$total | Cliente ID: $id_cliente";
     if($desc_manual_monto > 0) $detalles_audit .= " | Desc.Manual: $$desc_manual_monto";
-    if($cupon_codigo) $detalles_audit .= " | Cupon: $cupon_codigo";
-    
-    $stmtAudit = $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (?, ?, 'VENTA_REALIZADA', ?)");
-    $stmtAudit->execute([$fecha_actual, $user_id, $detalles_audit]);
+    $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (?, ?, 'VENTA_REALIZADA', ?)")->execute([$fecha_actual, $user_id, $detalles_audit]);
 
     $conexion->commit();
     echo json_encode(['status' => 'success', 'id_venta' => $venta_id, 'msg' => 'Venta procesada correctamente']);
 
 } catch (Exception $e) {
-    $conexion->rollBack();
-    error_log("Error Venta: " . $e->getMessage()); // Log servidor
-    echo json_encode(['status' => 'error', 'msg' => 'Error al procesar: ' . $e->getMessage()]);
+    if ($conexion->inTransaction()) {
+        $conexion->rollBack();
+    }
+    // Devolvemos el error en JSON para que el frontend lo muestre en alerta roja
+    echo json_encode(['status' => 'error', 'msg' => $e->getMessage()]);
 }
 ?>

@@ -1,171 +1,169 @@
 <?php
-// combos.php - GESTOR DE PACKS (CON AYUDA INTERACTIVA Y DETALLE DE CÁLCULOS)
+// combos.php - CORREGIDO: ENLACE DE IDS Y STOCK 0
 session_start();
 require_once 'includes/db.php';
 
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
+// --- FUNCIONES AUXILIARES ---
+
+// Función nueva: Busca el ID en la tabla COMBOS (no en productos)
+function obtenerIdComboPorCodigo($conexion, $codigo) {
+    $stmt = $conexion->prepare("SELECT id FROM combos WHERE codigo_barras = ? LIMIT 1");
+    $stmt->execute([$codigo]);
+    return $stmt->fetchColumn();
+}
+
 // --- LOGICA BACKEND ---
 
-// 1. CREAR
+// 1. CREAR OFERTA (COMBO)
 if (isset($_POST['crear_combo'])) {
     $nombre = $_POST['nombre'];
     $precio = $_POST['precio'];
     $codigo = $_POST['codigo']; 
-    
-    // ESTO ES LO ORIGINAL (NO SE TOCA)
-    $sql = "INSERT INTO combos (nombre, precio, codigo_barras, activo) VALUES (?, ?, ?, 1)";
-    
-    if($conexion->prepare($sql)->execute([$nombre, $precio, $codigo])) {
 
-        // --- SOLO AGREGAMOS ESTO (COPIA A LA TIENDA) ---
-        // Usamos Categoria 2 (Kiosco) y Proveedor 1 para evitar el Error 500
-        $sql_tienda = "INSERT INTO productos (descripcion, precio_venta, codigo_barras, tipo, id_categoria, id_proveedor, stock_actual, activo, es_destacado_web) 
-                       VALUES (?, ?, ?, 'combo', 2, 1, 100, 1, 1)";
-        $conexion->prepare($sql_tienda)->execute([$nombre, $precio, $codigo]);
-        // ------------------------------------------------
-
-        header("Location: combos.php?msg=creado"); exit;
+    if(empty($codigo)) {
+        $codigo = 'COMBO-' . time();
     }
-}
 
-// 2. EDITAR (CORREGIDO PARA SINCRONIZAR TIENDA)
-if (isset($_POST['editar_combo'])) {
-    $id = $_POST['id_combo'];
-    $nombre = $_POST['nombre'];
-    $precio = $_POST['precio'];
-    
-    // 1. Actualizamos en tu panel (Tabla Combos)
-    $sql = "UPDATE combos SET nombre = ?, precio = ? WHERE id = ?";
-    
-    if($conexion->prepare($sql)->execute([$nombre, $precio, $id])) {
+    try {
+        $conexion->beginTransaction();
+
+        // A. Insertar en tabla UI (COMBOS)
+        $stmtC = $conexion->prepare("INSERT INTO combos (nombre, precio, codigo_barras, activo) VALUES (?, ?, ?, 1)");
+        $stmtC->execute([$nombre, $precio, $codigo]);
         
-        // 2. --- AGREGADO: Actualizamos también en la Tienda (Tabla Productos) ---
-        // Buscamos el producto en la tienda por su código de barras original para actualizar precio y nombre
-        // Primero obtenemos el código de barras de este combo
-        $stmt = $conexion->prepare("SELECT codigo_barras FROM combos WHERE id = ?");
-        $stmt->execute([$id]);
-        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        // B. Insertar en tabla STOCK (PRODUCTOS)
+        // CAMBIO: Ponemos stock_actual en 0. La caja ignorará esto y mirará los ingredientes.
+        $check = $conexion->prepare("SELECT id FROM productos WHERE codigo_barras = ?");
+        $check->execute([$codigo]);
         
-        if($row && !empty($row['codigo_barras'])) {
-            $sql_tienda = "UPDATE productos SET descripcion = ?, precio_venta = ? WHERE codigo_barras = ? AND tipo = 'combo'";
-            $conexion->prepare($sql_tienda)->execute([$nombre, $precio, $row['codigo_barras']]);
+        if($check->rowCount() == 0) {
+            $sql_tienda = "INSERT INTO productos (descripcion, precio_venta, codigo_barras, tipo, id_categoria, id_proveedor, stock_actual, activo, es_destacado_web) 
+                           VALUES (?, ?, ?, 'combo', 2, 1, 0, 1, 1)";
+            $conexion->prepare($sql_tienda)->execute([$nombre, $precio, $codigo]);
+        } else {
+            $sql_upd = "UPDATE productos SET precio_venta = ?, tipo = 'combo', descripcion = ? WHERE codigo_barras = ?";
+            $conexion->prepare($sql_upd)->execute([$precio, $nombre, $codigo]);
         }
-        // ------------------------------------------------------------------------
 
-        header("Location: combos.php?msg=editado"); exit;
+        $conexion->commit();
+        header("Location: combos.php?msg=creado"); exit;
+
+    } catch (Exception $e) {
+        $conexion->rollBack();
+        echo "Error: " . $e->getMessage(); exit;
     }
 }
 
-
-// 3. AGREGAR ITEM
+// 2. AGREGAR PRODUCTO A LA OFERTA
 if (isset($_POST['agregar_item'])) {
-    $id_combo = $_POST['id_combo'];
-    $id_prod = $_POST['id_producto'];
+    $combo_codigo = $_POST['combo_codigo']; // Código del combo (ej: PACK-FERNET)
+    $id_prod_hijo = $_POST['id_producto'];  // ID del Fernet
     $cant = $_POST['cantidad'];
     
-    // Validar duplicados
-    $check = $conexion->prepare("SELECT id FROM combo_items WHERE id_combo = ? AND id_producto = ?");
-    $check->execute([$id_combo, $id_prod]);
-    
-    if ($check->rowCount() > 0) {
-        $conexion->prepare("UPDATE combo_items SET cantidad = cantidad + ? WHERE id_combo = ? AND id_producto = ?")->execute([$cant, $id_combo, $id_prod]);
+    // CORRECCIÓN CRÍTICA: Buscamos el ID en la tabla 'combos', NO en 'productos'
+    $id_combo_real = obtenerIdComboPorCodigo($conexion, $combo_codigo);
+
+    if ($id_combo_real) {
+        // Ahora sí guardamos el ID correcto en la tabla combo_items
+        
+        $check = $conexion->prepare("SELECT id FROM combo_items WHERE id_combo = ? AND id_producto = ?");
+        $check->execute([$id_combo_real, $id_prod_hijo]);
+        
+        if ($check->rowCount() > 0) {
+            $conexion->prepare("UPDATE combo_items SET cantidad = cantidad + ? WHERE id_combo = ? AND id_producto = ?")->execute([$cant, $id_combo_real, $id_prod_hijo]);
+        } else {
+            $conexion->prepare("INSERT INTO combo_items (id_combo, id_producto, cantidad) VALUES (?, ?, ?)")->execute([$id_combo_real, $id_prod_hijo, $cant]);
+        }
+        header("Location: combos.php?msg=agregado"); exit;
     } else {
-        $conexion->prepare("INSERT INTO combo_items (id_combo, id_producto, cantidad) VALUES (?, ?, ?)")->execute([$id_combo, $id_prod, $cant]);
+        echo "Error: No se encontró la oferta en la base de datos de combos."; exit;
     }
-    header("Location: combos.php?msg=agregado"); exit;
 }
 
-// 4. ELIMINAR PACK
-if (isset($_GET['eliminar_id'])) {
-    $id = $_GET['eliminar_id'];
-    $conexion->prepare("UPDATE combos SET activo = 0 WHERE id = ?")->execute([$id]);
-    header("Location: combos.php?msg=eliminado"); exit;
-}
-
-// 5. BORRAR ITEM DE PACK
+// 3. ELIMINAR ITEM
 if (isset($_GET['borrar_item'])) {
-    $id = $_GET['borrar_item'];
-    $conexion->prepare("DELETE FROM combo_items WHERE id = ?")->execute([$id]);
+    $id_item = $_GET['borrar_item'];
+    $conexion->prepare("DELETE FROM combo_items WHERE id = ?")->execute([$id_item]);
     header("Location: combos.php?msg=item_borrado"); exit;
 }
 
-// --- CONSULTAS DE DATOS ---
+// 4. ELIMINAR OFERTA
+if (isset($_GET['eliminar_id'])) {
+    $id = $_GET['eliminar_id'];
+    
+    $stmt = $conexion->prepare("SELECT codigo_barras FROM combos WHERE id = ?");
+    $stmt->execute([$id]);
+    $cod = $stmt->fetchColumn();
+
+    $conexion->prepare("DELETE FROM combos WHERE id = ?")->execute([$id]);
+    if($cod) {
+        $conexion->prepare("UPDATE productos SET activo = 0 WHERE codigo_barras = ?")->execute([$cod]);
+    }
+    header("Location: combos.php?msg=eliminado"); exit;
+}
+
+// --- CONSULTAS ---
 $combos = $conexion->query("SELECT * FROM combos WHERE activo=1 ORDER BY id DESC")->fetchAll(PDO::FETCH_ASSOC);
 $productos = $conexion->query("SELECT id, descripcion, stock_actual FROM productos WHERE activo=1 AND tipo != 'combo' ORDER BY descripcion ASC")->fetchAll(PDO::FETCH_ASSOC);
 
-// Preparamos datos completos y detallados para las explicaciones
+// Datos visuales
 $recetas_data = [];
 foreach($combos as $c) {
-    $items = $conexion->query("SELECT ci.id, ci.cantidad, p.descripcion, p.precio_costo, p.precio_venta 
-                               FROM combo_items ci 
-                               JOIN productos p ON ci.id_producto = p.id 
-                               WHERE ci.id_combo = ".$c['id'])->fetchAll(PDO::FETCH_ASSOC);
-    
+    // Para mostrar la lista, usamos el ID del combo directo que es lo que guardamos ahora
+    $items = [];
     $costo_total = 0;
-    $precio_regular_total = 0; 
+    $precio_regular = 0;
+
+    $sql_items = "SELECT ci.id, ci.cantidad, p.descripcion, p.precio_costo, p.precio_venta 
+                  FROM combo_items ci 
+                  JOIN productos p ON ci.id_producto = p.id 
+                  WHERE ci.id_combo = ?"; // Ahora buscamos por ID de combo correctamente
+    $stmtItems = $conexion->prepare($sql_items);
+    $stmtItems->execute([$c['id']]);
+    $items = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
     
     foreach($items as $i) { 
         $costo_total += ($i['precio_costo'] * $i['cantidad']); 
-        $precio_regular_total += ($i['precio_venta'] * $i['cantidad']);
+        $precio_regular += ($i['precio_venta'] * $i['cantidad']);
     }
     
     $recetas_data[$c['id']] = [
         'items' => $items,
         'costo' => $costo_total,
-        'precio_regular' => $precio_regular_total,
+        'precio_regular' => $precio_regular,
         'ganancia' => $c['precio'] - $costo_total
     ];
 }
-$json_db = json_encode($recetas_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP | JSON_UNESCAPED_UNICODE);
+
+$json_db = json_encode($recetas_data);
 ?>
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Mis Packs y Ofertas</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
+    <title>Ofertas y Combos</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <link href="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/select2-bootstrap-5-theme@1.3.0/dist/select2-bootstrap-5-theme.min.css" />
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    
     <style>
-        body { background-color: #f8f9fa; font-family: 'Segoe UI', sans-serif; padding-bottom: 100px; }
-        
-        .card-combo { border: none; border-radius: 15px; background: white; box-shadow: 0 4px 12px rgba(0,0,0,0.05); transition: transform 0.2s; position: relative; overflow: hidden; border-left: 5px solid #0d6efd; }
-        .card-combo:active { transform: scale(0.98); }
-        
-        .combo-price { font-size: 1.6rem; font-weight: 800; color: #212529; }
-        .combo-code { font-family: monospace; font-size: 0.85rem; background: #e9ecef; padding: 2px 6px; border-radius: 4px; color: #495057; }
-        
-        /* Botones de Acción */
-        .action-bar { display: flex; justify-content: space-between; border-top: 1px solid #f0f0f0; padding-top: 15px; margin-top: 15px; }
-        .btn-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; border: none; font-size: 1.1rem; transition: background 0.2s; }
+        body { background-color: #f4f6f9; font-family: 'Segoe UI', sans-serif; padding-bottom: 80px; }
+        .card-combo { border: 0; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); overflow: hidden; transition: transform 0.2s; }
+        .card-combo:hover { transform: translateY(-3px); }
+        .combo-header { background: #fff; padding: 15px; border-bottom: 1px solid #eee; }
+        .combo-body { padding: 15px; background: #fff; }
+        .price-tag { font-size: 1.5rem; font-weight: 800; color: #198754; }
+        .badge-code { background: #e9ecef; color: #495057; font-family: monospace; padding: 4px 8px; border-radius: 4px; font-size: 0.85rem; }
+        .btn-action { width: 38px; height: 38px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 0; transition: all 0.2s; }
         .btn-view { background: #e7f5ff; color: #0d6efd; }
-        .btn-edit { background: #fff3cd; color: #ffc107; }
-        .btn-build { background: #d1e7dd; color: #198754; }
+        .btn-add { background: #d1e7dd; color: #198754; }
         .btn-del { background: #f8d7da; color: #dc3545; }
-        
-        /* Data Rows */
-        .data-row { display: flex; justify-content: space-between; align-items: center; font-size: 0.85rem; margin-bottom: 8px; }
-        .label-data { color: #6c757d; font-weight: 600; display: flex; align-items: center; gap: 5px; }
-        .val-data { font-weight: 700; }
-        .val-costo { color: #dc3545; }
-        .val-regular { text-decoration: line-through; color: #adb5bd; }
-        .val-ganancia { color: #198754; font-size: 0.95rem; }
-        
-        /* Botón de Ayuda (?) */
-        .btn-help { cursor: pointer; color: #0d6efd; font-size: 0.9rem; transition: transform 0.2s; }
-        .btn-help:hover { transform: scale(1.2); color: #0a58ca; }
-
-        /* Modal Cantidad Gigante */
-        .qty-wrapper { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 20px 0; }
-        .btn-qty { width: 60px; height: 60px; border-radius: 50%; font-size: 1.5rem; font-weight: bold; border: none; display: flex; align-items: center; justify-content: center; }
-        .btn-minus { background: #f8f9fa; color: #dc3545; border: 2px solid #f8d7da; }
-        .btn-plus { background: #f8f9fa; color: #198754; border: 2px solid #d1e7dd; }
-        .input-qty { width: 80px; height: 60px; font-size: 2rem; font-weight: bold; text-align: center; border: none; background: transparent; }
+        .item-row { border-bottom: 1px solid #f0f0f0; padding: 8px 0; font-size: 0.9rem; }
+        .item-row:last-child { border-bottom: 0; }
     </style>
 </head>
 <body>
@@ -173,79 +171,58 @@ $json_db = json_encode($recetas_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QU
     <?php include 'includes/menu.php'; ?>
 
     <div class="container pt-4">
-        
         <div class="d-flex justify-content-between align-items-center mb-4">
-            <div>
-                <h2 class="fw-bold m-0 text-dark">Mis Packs</h2>
-                <small class="text-muted">Gestiona tus ofertas</small>
-            </div>
-            <button class="btn btn-primary rounded-pill px-4 fw-bold shadow" data-bs-toggle="modal" data-bs-target="#modalCrear">
-                <i class="bi bi-plus-lg"></i> CREAR
+            <h2 class="fw-bold m-0 text-dark"><i class="bi bi-tags-fill text-warning"></i> Mis Ofertas</h2>
+            <button class="btn btn-primary rounded-pill px-4 fw-bold shadow-sm" data-bs-toggle="modal" data-bs-target="#modalCrear">
+                <i class="bi bi-plus-lg"></i> NUEVA OFERTA
             </button>
         </div>
 
         <div class="row g-3">
-            <?php if(empty($combos)): ?>
-                <div class="col-12 text-center text-muted py-5">
-                    <h4>No hay combos creados</h4>
-                    <p>Toca el botón "CREAR" para empezar.</p>
-                </div>
-            <?php endif; ?>
-
             <?php foreach($combos as $c): 
-                $data = $recetas_data[$c['id']] ?? ['items'=>[], 'ganancia'=>0, 'costo'=>0, 'precio_regular'=>0];
-                $cant_prod = count($data['items']);
+                $data = $recetas_data[$c['id']];
+                $has_items = count($data['items']) > 0;
             ?>
             <div class="col-12 col-md-6 col-lg-4">
-                <div class="card-combo p-3 h-100 d-flex flex-column justify-content-between">
-                    
-                    <div>
-                        <div class="d-flex justify-content-between align-items-start mb-3">
-                            <div style="overflow: hidden;">
-                                <h5 class="fw-bold mb-1 text-dark text-truncate"><?php echo $c['nombre']; ?></h5>
-                                <span class="combo-code"><?php echo $c['codigo_barras'] ?: 'S/C'; ?></span>
-                            </div>
-                            <div class="text-end">
-                                <div class="combo-price">$<?php echo number_format($c['precio'],0,',','.'); ?></div>
-                            </div>
+                <div class="card-combo h-100 d-flex flex-column">
+                    <div class="combo-header d-flex justify-content-between align-items-center">
+                        <div>
+                            <h5 class="fw-bold mb-1 text-truncate" style="max-width: 200px;"><?php echo $c['nombre']; ?></h5>
+                            <span class="badge-code"><?php echo $c['codigo_barras']; ?></span>
                         </div>
-
-                        <div class="bg-light rounded p-2 mb-2">
-                            
-                            <div class="data-row">
-                                <span class="label-data">
-                                    Costo Insumos 
-                                    <i class="bi bi-question-circle-fill btn-help" onclick='explicarCosto(<?php echo $c['id']; ?>, "<?php echo htmlspecialchars($c['nombre']); ?>")'></i>
-                                </span>
-                                <span class="val-data val-costo">$<?php echo number_format($data['costo'], 0, ',', '.'); ?></span>
-                            </div>
-                            
-                            <div class="data-row">
-                                <span class="label-data">
-                                    Suma Unitarios 
-                                    <i class="bi bi-question-circle-fill btn-help" onclick='explicarRegular(<?php echo $c['id']; ?>, "<?php echo htmlspecialchars($c['nombre']); ?>")'></i>
-                                </span>
-                                <span class="val-data val-regular">$<?php echo number_format($data['precio_regular'], 0, ',', '.'); ?></span>
-                            </div>
-
-                            <div class="data-row border-top pt-2 mt-1">
-                                <span class="label-data text-dark">Ganancia Neta:</span>
-                                <span class="val-data val-ganancia">$<?php echo number_format($data['ganancia'], 0, ',', '.'); ?></span>
-                            </div>
+                        <div class="text-end">
+                            <div class="price-tag">$<?php echo number_format($c['precio'], 0, ',', '.'); ?></div>
+                            <small class="text-muted fw-bold">Precio Final</small>
                         </div>
                     </div>
+                    
+                    <div class="combo-body flex-grow-1">
+                        <h6 class="text-muted small fw-bold mb-2">CONTENIDO:</h6>
+                        <?php if(!$has_items): ?>
+                            <div class="alert alert-warning py-2 small mb-0">
+                                <i class="bi bi-exclamation-circle"></i> Sin productos.<br>Agrega items para activar el descuento de stock.
+                            </div>
+                        <?php else: ?>
+                            <div style="max-height: 120px; overflow-y: auto;">
+                                <?php foreach($data['items'] as $i): ?>
+                                    <div class="item-row d-flex justify-content-between">
+                                        <span><b class="text-primary"><?php echo $i['cantidad']; ?>x</b> <?php echo $i['descripcion']; ?></span>
+                                        <a href="combos.php?borrar_item=<?php echo $i['id']; ?>" class="text-danger"><i class="bi bi-x"></i></a>
+                                    </div>
+                                <?php endforeach; ?>
+                            </div>
+                            <div class="mt-3 pt-2 border-top d-flex justify-content-between small text-muted">
+                                <span>Valor Real: <span class="text-decoration-line-through">$<?php echo number_format($data['precio_regular'],0,',','.'); ?></span></span>
+                                <span class="text-success fw-bold">Ganancia: $<?php echo number_format($data['ganancia'],0,',','.'); ?></span>
+                            </div>
+                        <?php endif; ?>
+                    </div>
 
-                    <div class="action-bar">
-                        <button class="btn-icon btn-view" onclick='verDetalle(<?php echo $c['id']; ?>, "<?php echo htmlspecialchars($c['nombre']); ?>")' title="Ver Contenido">
-                            <i class="bi bi-eye-fill"></i>
+                    <div class="p-3 bg-light d-flex justify-content-end gap-2">
+                        <button class="btn-action btn-add" onclick='abrirAgregar(<?php echo $c['id']; ?>, "<?php echo $c['nombre']; ?>", "<?php echo $c['codigo_barras']; ?>")' title="Agregar Producto">
+                            <i class="bi bi-plus-lg fw-bold"></i>
                         </button>
-                        <button class="btn-icon btn-build" onclick='armarReceta(<?php echo $c['id']; ?>, "<?php echo htmlspecialchars($c['nombre']); ?>")' title="Agregar Productos">
-                            <i class="bi bi-layers-fill"></i>
-                        </button>
-                        <button class="btn-icon btn-edit" onclick='editarPack(<?php echo $c['id']; ?>, "<?php echo htmlspecialchars($c['nombre']); ?>", "<?php echo $c['precio']; ?>")' title="Editar Nombre/Precio">
-                            <i class="bi bi-pencil-fill"></i>
-                        </button>
-                        <button class="btn-icon btn-del" onclick="borrarPack(<?php echo $c['id']; ?>)" title="Eliminar">
+                        <button class="btn-action btn-del" onclick="borrarPack(<?php echo $c['id']; ?>)" title="Eliminar Oferta">
                             <i class="bi bi-trash-fill"></i>
                         </button>
                     </div>
@@ -257,139 +234,64 @@ $json_db = json_encode($recetas_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QU
 
     <div class="modal fade" id="modalCrear" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0">
+            <div class="modal-content border-0 shadow">
                 <div class="modal-header bg-primary text-white">
-                    <h5 class="modal-title fw-bold">Nuevo Pack</h5>
+                    <h5 class="modal-title fw-bold">Crear Nueva Oferta</h5>
                     <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <form method="POST">
                         <input type="hidden" name="crear_combo" value="1">
-                        <label class="fw-bold small text-muted">Nombre del Pack</label>
-                        <input type="text" name="nombre" class="form-control form-control-lg mb-3 fw-bold" placeholder="Ej: Fernet + Coca" required>
                         
-                        <label class="fw-bold small text-muted">Precio Oferta ($)</label>
-                        <input type="number" name="precio" class="form-control form-control-lg mb-3 text-success fw-bold" placeholder="0" required>
+                        <label class="form-label fw-bold">Nombre de la Oferta</label>
+                        <input type="text" name="nombre" class="form-control form-control-lg mb-3" placeholder="Ej: Promo Fernet" required>
                         
-                        <label class="fw-bold small text-muted">Código Barras (Opcional)</label>
-                        <input type="text" name="codigo" class="form-control mb-4" placeholder="Escanear...">
+                        <div class="row">
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Precio ($)</label>
+                                <input type="number" name="precio" class="form-control form-control-lg text-success fw-bold" placeholder="0" required>
+                            </div>
+                            <div class="col-6">
+                                <label class="form-label fw-bold">Código (Opcional)</label>
+                                <input type="text" name="codigo" class="form-control form-control-lg" placeholder="Automático">
+                            </div>
+                        </div>
+                        <div class="form-text mb-4">Si dejas el código vacío, se creará uno automáticamente.</div>
                         
-                        <button class="btn btn-primary w-100 fw-bold py-2">CREAR AHORA</button>
+                        <button class="btn btn-primary w-100 fw-bold py-3">GUARDAR OFERTA</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
 
-    <div class="modal fade" id="modalEditar" tabindex="-1">
+    <div class="modal fade" id="modalAgregar" tabindex="-1">
         <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0">
-                <div class="modal-header bg-warning">
-                    <h5 class="modal-title fw-bold text-dark">Editar Pack</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            <div class="modal-content border-0 shadow">
+                <div class="modal-header bg-success text-white">
+                    <h5 class="modal-title fw-bold">Agregar a: <span id="titulo_agregar"></span></h5>
+                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body p-4">
                     <form method="POST">
-                        <input type="hidden" name="editar_combo" value="1">
-                        <input type="hidden" name="id_combo" id="edit_id">
-                        
-                        <label class="fw-bold small text-muted">Nombre</label>
-                        <input type="text" name="nombre" id="edit_nombre" class="form-control mb-3 fw-bold" required>
-                        
-                        <label class="fw-bold small text-muted">Precio ($)</label>
-                        <input type="number" name="precio" id="edit_precio" class="form-control mb-4 fw-bold text-success" required>
-                        
-                        <button class="btn btn-warning w-100 fw-bold py-2">GUARDAR CAMBIOS</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalReceta" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0">
-                <div class="modal-header bg-success text-white">
-                    <h5 class="modal-title fw-bold">Agregar Producto</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-4 text-center">
-                    <h5 id="receta_titulo" class="text-success fw-bold mb-4"></h5>
-                    <form method="POST">
                         <input type="hidden" name="agregar_item" value="1">
-                        <input type="hidden" name="id_combo" id="receta_id">
+                        <input type="hidden" name="combo_codigo" id="combo_codigo_input">
                         
-                        <div class="text-start mb-4">
-                            <label class="fw-bold small text-muted mb-1">Producto a Incluir</label>
-                            <select name="id_producto" class="form-select select2" id="sel_prod" required style="width: 100%;">
-                                <option value="">Buscar...</option>
-                                <?php foreach($productos as $p): ?>
-                                    <option value="<?php echo $p['id']; ?>">
-                                        <?php echo $p['descripcion']; ?> (Stock: <?php echo $p['stock_actual']; ?>)
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                        <label class="form-label fw-bold">Buscar Producto</label>
+                        <select name="id_producto" class="form-select select2" required style="width:100%">
+                            <option value="">Elegir producto...</option>
+                            <?php foreach($productos as $p): ?>
+                                <option value="<?php echo $p['id']; ?>">
+                                    <?php echo $p['descripcion']; ?> (Stock: <?php echo floatval($p['stock_actual']); ?>)
+                                </option>
+                            <?php endforeach; ?>
+                        </select>
 
-                        <label class="fw-bold small text-muted">CANTIDAD</label>
-                        <div class="qty-wrapper">
-                            <button type="button" class="btn-qty btn-minus" onclick="cambiarCant(-1)">-</button>
-                            <input type="number" name="cantidad" id="qty_input" class="input-qty" value="1" readonly>
-                            <button type="button" class="btn-qty btn-plus" onclick="cambiarCant(1)">+</button>
-                        </div>
-
-                        <button class="btn btn-success w-100 fw-bold py-3 mt-2">AGREGAR AL PACK</button>
+                        <label class="form-label fw-bold mt-3">Cantidad</label>
+                        <input type="number" name="cantidad" class="form-control form-control-lg mb-4 text-center fw-bold" value="1" min="1">
+                        
+                        <button class="btn btn-success w-100 fw-bold py-3">AGREGAR ITEM</button>
                     </form>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalDetalle" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0">
-                <div class="modal-header">
-                    <h5 class="modal-title fw-bold" id="det_titulo">Detalle</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <ul class="list-group list-group-flush" id="det_lista"></ul>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="modal fade" id="modalExplicacion" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0">
-                <div class="modal-header bg-info text-white">
-                    <h5 class="modal-title fw-bold" id="expl_titulo"><i class="bi bi-info-circle-fill"></i> ¿Cómo se calcula?</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body p-0">
-                    <div class="alert alert-light m-0 border-bottom text-center small text-muted">
-                        <span id="expl_subtitulo"></span>
-                    </div>
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0 small">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Producto</th>
-                                    <th class="text-end">Valor Unit.</th>
-                                    <th class="text-center">Cant.</th>
-                                    <th class="text-end">Subtotal</th>
-                                </tr>
-                            </thead>
-                            <tbody id="expl_tabla">
-                                </tbody>
-                            <tfoot class="table-group-divider">
-                                <tr>
-                                    <td colspan="3" class="text-end fw-bold">TOTAL:</td>
-                                    <td class="text-end fw-bold fs-6" id="expl_total"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
-                    </div>
                 </div>
             </div>
         </div>
@@ -398,154 +300,46 @@ $json_db = json_encode($recetas_data, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QU
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/js/select2.min.js"></script>
-    
-    <script>
-        // BASE DE DATOS LOCAL JS
-        const DB = <?php echo $json_db; ?>;
 
-        // INICIALIZAR
+    <script>
         $(document).ready(function() {
             $('.select2').select2({
-                dropdownParent: $('#modalReceta'),
+                dropdownParent: $('#modalAgregar'),
                 theme: 'bootstrap-5',
                 width: '100%',
-                placeholder: 'Escribe para buscar...',
-                language: { noResults: () => "No encontrado" }
+                placeholder: 'Buscar por nombre...'
             });
         });
 
-        // SWEET ALERT
-        const urlParams = new URLSearchParams(window.location.search);
-        if(urlParams.has('msg')){
-            Swal.fire({
-                icon: 'success',
-                title: 'Operación Exitosa',
-                toast: true, position: 'top-end', showConfirmButton: false, timer: 2000
-            });
-            window.history.replaceState({}, document.title, window.location.pathname);
-        }
-
-        // --- FUNCIONES DE BOTONES ---
-
-        function cambiarCant(val) {
-            let el = document.getElementById('qty_input');
-            let actual = parseInt(el.value);
-            if(actual + val >= 1) el.value = actual + val;
-        }
-
-        function editarPack(id, nombre, precio) {
-            document.getElementById('edit_id').value = id;
-            document.getElementById('edit_nombre').value = nombre;
-            document.getElementById('edit_precio').value = precio;
-            new bootstrap.Modal(document.getElementById('modalEditar')).show();
-        }
-
-        function armarReceta(id, nombre) {
-            document.getElementById('receta_id').value = id;
-            document.getElementById('receta_titulo').innerText = nombre;
-            document.getElementById('qty_input').value = 1;
-            $('#sel_prod').val(null).trigger('change');
-            new bootstrap.Modal(document.getElementById('modalReceta')).show();
-        }
-
-        function verDetalle(id, nombre) {
-            document.getElementById('det_titulo').innerText = nombre;
-            let data = DB[id];
-            let lista = document.getElementById('det_lista');
-            lista.innerHTML = '';
-            
-            if(data.items.length === 0) {
-                lista.innerHTML = '<li class="list-group-item text-center text-muted py-4">Sin productos.<br>Usa el botón verde para agregar.</li>';
-            } else {
-                data.items.forEach(i => {
-                    let li = document.createElement('li');
-                    li.className = 'list-group-item d-flex justify-content-between align-items-center py-3';
-                    li.innerHTML = `
-                        <div class="d-flex align-items-center gap-3">
-                            <span class="badge bg-secondary rounded-pill px-3 py-2 fs-6">${i.cantidad}</span>
-                            <div>
-                                <div class="fw-bold text-dark">${i.descripcion}</div>
-                            </div>
-                        </div>
-                        <a href="combos.php?borrar_item=${i.id}" class="btn btn-outline-danger btn-sm border-0 p-0 fs-5"><i class="bi bi-x-lg"></i></a>
-                    `;
-                    lista.appendChild(li);
-                });
-            }
-            new bootstrap.Modal(document.getElementById('modalDetalle')).show();
-        }
-
-        // --- FUNCIONES DE EXPLICACIÓN (AYUDA) ---
-        
-        function explicarCosto(id, nombre) {
-            let data = DB[id];
-            document.getElementById('expl_titulo').innerHTML = '<i class="bi bi-graph-down"></i> Detalle Costos: ' + nombre;
-            document.getElementById('expl_subtitulo').innerText = 'Costo que pagas al proveedor por cada ingrediente';
-            
-            let tbody = document.getElementById('expl_tabla');
-            tbody.innerHTML = '';
-            
-            if(data.items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin ingredientes</td></tr>';
-            } else {
-                data.items.forEach(i => {
-                    let sub = i.precio_costo * i.cantidad;
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${i.descripcion}</td>
-                            <td class="text-end">$${new Intl.NumberFormat('es-AR').format(i.precio_costo)}</td>
-                            <td class="text-center">${i.cantidad}</td>
-                            <td class="text-end fw-bold">$${new Intl.NumberFormat('es-AR').format(sub)}</td>
-                        </tr>
-                    `;
-                });
-            }
-            document.getElementById('expl_total').innerText = '$' + new Intl.NumberFormat('es-AR').format(data.costo);
-            new bootstrap.Modal(document.getElementById('modalExplicacion')).show();
-        }
-
-        function explicarRegular(id, nombre) {
-            let data = DB[id];
-            document.getElementById('expl_titulo').innerHTML = '<i class="bi bi-shop"></i> Suma Precios Unitarios';
-            document.getElementById('expl_subtitulo').innerText = 'Lo que pagaría el cliente si comprara todo suelto';
-            
-            let tbody = document.getElementById('expl_tabla');
-            tbody.innerHTML = '';
-            
-            if(data.items.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="text-center">Sin ingredientes</td></tr>';
-            } else {
-                data.items.forEach(i => {
-                    let sub = i.precio_venta * i.cantidad;
-                    tbody.innerHTML += `
-                        <tr>
-                            <td>${i.descripcion}</td>
-                            <td class="text-end">$${new Intl.NumberFormat('es-AR').format(i.precio_venta)}</td>
-                            <td class="text-center">${i.cantidad}</td>
-                            <td class="text-end fw-bold">$${new Intl.NumberFormat('es-AR').format(sub)}</td>
-                        </tr>
-                    `;
-                });
-            }
-            document.getElementById('expl_total').innerText = '$' + new Intl.NumberFormat('es-AR').format(data.precio_regular);
-            new bootstrap.Modal(document.getElementById('modalExplicacion')).show();
+        function abrirAgregar(id, nombre, codigo) {
+            $('#titulo_agregar').text(nombre);
+            $('#combo_codigo_input').val(codigo);
+            new bootstrap.Modal(document.getElementById('modalAgregar')).show();
         }
 
         function borrarPack(id) {
             Swal.fire({
-                title: '¿Eliminar Pack?',
-                text: "Esta acción no se puede deshacer.",
+                title: '¿Eliminar Oferta?',
+                text: "Se borrará de la lista y del stock.",
                 icon: 'warning',
                 showCancelButton: true,
                 confirmButtonColor: '#d33',
-                cancelButtonColor: '#3085d6',
-                confirmButtonText: 'Sí, eliminar',
+                confirmButtonText: 'Sí, borrar',
                 cancelButtonText: 'Cancelar'
             }).then((result) => {
                 if (result.isConfirmed) {
                     window.location.href = 'combos.php?eliminar_id=' + id;
                 }
             })
+        }
+
+        const urlParams = new URLSearchParams(window.location.search);
+        if(urlParams.has('msg')){
+            Swal.fire({
+                toast: true, position: 'top-end', showConfirmButton: false, timer: 3000,
+                icon: 'success', title: 'Operación Exitosa'
+            });
+            window.history.replaceState({}, document.title, window.location.pathname);
         }
     </script>
 </body>

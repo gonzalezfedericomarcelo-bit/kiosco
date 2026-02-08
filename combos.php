@@ -12,22 +12,51 @@ if (isset($_POST['crear_combo'])) {
     $nombre = $_POST['nombre'];
     $precio = $_POST['precio'];
     $codigo = $_POST['codigo']; 
+    
+    // ESTO ES LO ORIGINAL (NO SE TOCA)
     $sql = "INSERT INTO combos (nombre, precio, codigo_barras, activo) VALUES (?, ?, ?, 1)";
+    
     if($conexion->prepare($sql)->execute([$nombre, $precio, $codigo])) {
+
+        // --- SOLO AGREGAMOS ESTO (COPIA A LA TIENDA) ---
+        // Usamos Categoria 2 (Kiosco) y Proveedor 1 para evitar el Error 500
+        $sql_tienda = "INSERT INTO productos (descripcion, precio_venta, codigo_barras, tipo, id_categoria, id_proveedor, stock_actual, activo, es_destacado_web) 
+                       VALUES (?, ?, ?, 'combo', 2, 1, 100, 1, 1)";
+        $conexion->prepare($sql_tienda)->execute([$nombre, $precio, $codigo]);
+        // ------------------------------------------------
+
         header("Location: combos.php?msg=creado"); exit;
     }
 }
 
-// 2. EDITAR
+// 2. EDITAR (CORREGIDO PARA SINCRONIZAR TIENDA)
 if (isset($_POST['editar_combo'])) {
     $id = $_POST['id_combo'];
     $nombre = $_POST['nombre'];
     $precio = $_POST['precio'];
+    
+    // 1. Actualizamos en tu panel (Tabla Combos)
     $sql = "UPDATE combos SET nombre = ?, precio = ? WHERE id = ?";
+    
     if($conexion->prepare($sql)->execute([$nombre, $precio, $id])) {
+        
+        // 2. --- AGREGADO: Actualizamos también en la Tienda (Tabla Productos) ---
+        // Buscamos el producto en la tienda por su código de barras original para actualizar precio y nombre
+        // Primero obtenemos el código de barras de este combo
+        $stmt = $conexion->prepare("SELECT codigo_barras FROM combos WHERE id = ?");
+        $stmt->execute([$id]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        
+        if($row && !empty($row['codigo_barras'])) {
+            $sql_tienda = "UPDATE productos SET descripcion = ?, precio_venta = ? WHERE codigo_barras = ? AND tipo = 'combo'";
+            $conexion->prepare($sql_tienda)->execute([$nombre, $precio, $row['codigo_barras']]);
+        }
+        // ------------------------------------------------------------------------
+
         header("Location: combos.php?msg=editado"); exit;
     }
 }
+
 
 // 3. AGREGAR ITEM
 if (isset($_POST['agregar_item'])) {

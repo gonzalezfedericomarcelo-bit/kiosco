@@ -1,5 +1,5 @@
 <?php
-// dashboard.php - VERSIÓN FINAL (Con Alertas de Vencimiento)
+// dashboard.php - VERSIÓN FINAL INTEGRADA (CUMPLEAÑOS + VENCIMIENTOS + STOCK)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -29,45 +29,38 @@ $resVentas = $stmtVentas->fetch(PDO::FETCH_ASSOC);
 $vendido_hoy = $resVentas['total'];
 $tickets_hoy = $resVentas['cantidad'];
 
-// 4. ALERTAS (STOCK Y VENCIMIENTOS)
+// 4. ALERTAS (STOCK, VENCIMIENTOS Y CUMPLEAÑOS)
 $alertas_stock = 0;
 $alertas_vencimiento = 0;
+$alertas_cumple = 0;
 
 if($rol_usuario <= 2) {
-    // A. Alerta de Stock Bajo
+    // A. Stock Bajo
     $stmtStock = $conexion->query("SELECT COUNT(*) FROM productos WHERE stock_actual <= stock_minimo AND activo = 1");
     $alertas_stock = $stmtStock->fetchColumn();
-    // 5. ALERTAS VENCIMIENTOS (AGREGADO)
-$alertas_vencimiento = 0;
-if($rol_usuario <= 2) {
-    // Busca configuración o usa 30 días por defecto
-    $stmtConf = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1");
-    $conf = $stmtConf->fetch(PDO::FETCH_ASSOC);
-    $dias_venc = $conf['dias_alerta_vencimiento'] ?? 30;
-    
-    // Cuenta productos que vencen pronto
-    $sqlVenc = "SELECT COUNT(*) FROM productos WHERE activo = 1 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL $dias_venc DAY)";
-    $alertas_vencimiento = $conexion->query($sqlVenc)->fetchColumn();
-}
 
-    // B. Alerta de Vencimientos (NUEVO)
-    // 1. Buscamos la config general de dias (ej. 30 dias)
+    // B. Vencimientos
     $stmtConf = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1");
     $conf = $stmtConf->fetch(PDO::FETCH_ASSOC);
     $dias_global = $conf['dias_alerta_vencimiento'] ?? 30;
 
-    // 2. Contamos productos que vencen entre HOY y (HOY + DIAS)
-    // La logica COALESCE(dias_alerta, ?) usa la alerta personalizada del producto si existe, sino la global
     $sqlVenc = "SELECT COUNT(*) FROM productos 
                 WHERE activo = 1 
                 AND fecha_vencimiento IS NOT NULL 
                 AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL COALESCE(dias_alerta, ?) DAY)";
-    
     $stmtVenc = $conexion->prepare($sqlVenc);
     $stmtVenc->execute([$dias_global]);
     $alertas_vencimiento = $stmtVenc->fetchColumn();
-}
 
+    // C. Cumpleaños (NUEVO)
+    try {
+        $sqlCumple = "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND MONTH(fecha_nacimiento) = MONTH(CURDATE()) AND DAY(fecha_nacimiento) = DAY(CURDATE())";
+        // Verificar si la tabla clientes tiene la columna 'activo', sino asumimos todos activos
+        // Para asegurar compatibilidad con tu tabla actual que vi antes:
+        $sqlCumple = "SELECT COUNT(*) FROM clientes WHERE MONTH(fecha_nacimiento) = MONTH(CURDATE()) AND DAY(fecha_nacimiento) = DAY(CURDATE())";
+        $alertas_cumple = $conexion->query($sqlCumple)->fetchColumn();
+    } catch(Exception $e) { $alertas_cumple = 0; }
+}
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -82,10 +75,10 @@ if($rol_usuario <= 2) {
         body { background-color: #f2f4f7; font-family: 'Inter', sans-serif; padding-bottom: 80px; }
         .dash-header {
             background: linear-gradient(135deg, #111 0%, #333 100%);
-            color: white; padding: 25px 20px 30px 20px;
-            padding: 15px 15px 20px 15px; /* MENOS RELLENO */
-            border-radius: 0 0 20px 20px; /* Borde más sutil */
-            margin-bottom: 15px; /* Menos separación con lo de abajo */
+            color: white; 
+            padding: 15px 15px 20px 15px; 
+            border-radius: 0 0 20px 20px; 
+            margin-bottom: 15px; 
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
         }
         
@@ -134,7 +127,6 @@ if($rol_usuario <= 2) {
         .section-header { font-size: 0.8rem; text-transform: uppercase; font-weight: 800; color: #6c757d; margin: 10px 0 10px; letter-spacing: 1px; }
         #reloj { font-variant-numeric: tabular-nums; letter-spacing: 1px; }
         
-        /* Estilo especial para vencimientos */
         .text-pulse { animation: pulse-red 2s infinite; }
         @keyframes pulse-red { 0% { color: #fff; } 50% { color: #ff8b94; } 100% { color: #fff; } }
     </style>
@@ -193,7 +185,7 @@ if($rol_usuario <= 2) {
                     </a>
                 </div>
 
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-2">
                      <a href="productos.php?filtro=stock_bajo" class="card-link">
                         <div class="stat-card">
                             <small class="stat-label">Stock Bajo</small>
@@ -205,12 +197,23 @@ if($rol_usuario <= 2) {
                 </div>
 
                 <?php if($rol_usuario <= 2): ?>
-                <div class="col-6 col-md-3">
+                <div class="col-6 col-md-2">
                      <a href="productos.php?filtro=vencimientos" class="card-link">
                          <div class="stat-card" style="<?php echo $alertas_vencimiento > 0 ? 'background: rgba(220, 53, 69, 0.25); border-color: rgba(220, 53, 69, 0.5);' : ''; ?>">
                             <small class="stat-label <?php echo $alertas_vencimiento > 0 ? 'text-danger fw-bold' : ''; ?>">Vencimientos</small>
                             <div class="stat-value <?php echo $alertas_vencimiento > 0 ? 'text-pulse' : ''; ?>">
                                 <?php echo $alertas_vencimiento; ?> <span style="font-size:0.7em; font-weight:400;">próx.</span>
+                            </div>
+                        </div>
+                    </a>
+                </div>
+
+                <div class="col-6 col-md-2">
+                     <a href="clientes.php?filtro=cumple" class="card-link">
+                         <div class="stat-card" style="<?php echo $alertas_cumple > 0 ? 'background: rgba(255, 193, 7, 0.25); border-color: rgba(255, 193, 7, 0.5);' : ''; ?>">
+                            <small class="stat-label <?php echo $alertas_cumple > 0 ? 'text-warning fw-bold' : ''; ?>">Cumpleaños</small>
+                            <div class="stat-value">
+                                <?php echo $alertas_cumple; ?> <i class="bi bi-gift-fill" style="font-size: 0.7em;"></i>
                             </div>
                         </div>
                     </a>

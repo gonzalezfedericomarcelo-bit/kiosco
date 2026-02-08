@@ -13,20 +13,27 @@ if(isset($_GET['toggle_id'])) {
     header("Location: productos.php"); exit;
 }
 
-// 2. PROCESAR BAJA (Archivar)
+// 2. PROCESAR BAJA (ELIMINAR DEFINITIVAMENTE)
 if (isset($_GET['borrar'])) {
     $id_borrar = $_GET['borrar'];
-    $stmt = $conexion->prepare("SELECT descripcion, codigo_barras FROM productos WHERE id = ?");
-    $stmt->execute([$id_borrar]);
-    $prod = $stmt->fetch(PDO::FETCH_ASSOC);
-    if($prod) {
-        $detalles = "Archivado/Eliminado: " . $prod['descripcion'];
-        $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (NOW(), ?, 'BAJA_PRODUCTO', ?)")->execute([$_SESSION['usuario_id'], $detalles]);
+    
+    try {
+        // Primero intentamos eliminarlo físicamente de la base de datos
+        $stmt = $conexion->prepare("DELETE FROM productos WHERE id = ?");
+        $stmt->execute([$id_borrar]);
+        
+        // Auditoría
+        $detalles = "Producto eliminado ID: " . $id_borrar;
+        $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (NOW(), ?, 'ELIMINAR_FISICO', ?)")->execute([$_SESSION['usuario_id'], $detalles]);
+        
+    } catch (PDOException $e) {
+        // SI FALLA (porque tiene ventas históricas), lo desactivamos en su lugar para no romper la base de datos
+        $conexion->prepare("UPDATE productos SET activo=0 WHERE id = ?")->execute([$id_borrar]);
     }
-    // Baja lógica (activo = 0)
-    $conexion->query("UPDATE productos SET activo=0 WHERE id=" . $id_borrar);
+
     header("Location: productos.php"); exit;
 }
+
 
 // 3. OBTENER DATOS (Traemos TODO para filtrar con JS)
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
@@ -166,15 +173,11 @@ $productos = $conexion->query($sql)->fetchAll();
             </div>
             
             <a href="combos.php" class="btn btn-warning text-dark rounded-pill px-4 py-2 fw-bold shadow-sm me-2">
-                <i class="bi bi-box-seam-fill me-1"></i> COMBOS
-            </a>
+    <i class="bi bi-box-seam-fill me-1"></i> COMBOS
+</a>
 
             <a href="producto_formulario.php" class="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm">
                 <i class="bi bi-plus-lg me-1"></i> NUEVO PRODUCTO
-            </a>
-
-            <a href="etiquetas_pdf.php" target="_blank" class="btn btn-info text-white rounded-pill px-4 py-2 fw-bold shadow-sm me-2">
-                <i class="bi bi-printer-fill me-1"></i> ETIQUETAS
             </a>
         </div>
 
@@ -200,7 +203,6 @@ $productos = $conexion->query($sql)->fetchAll();
                 <div class="col-lg-3 col-md-6">
                     <select id="filtroEstado" class="form-select bg-light">
                         <option value="todos">⚡ Ver Todo</option>
-                        <option value="vencimientos">📅 Próximos a Vencer</option> 
                         <option value="activos">✅ Solo Activos</option>
                         <option value="pausados">⏸️ Pausados / Inactivos</option>
                         <option value="bajo_stock">⚠️ Stock Bajo / Crítico</option>
@@ -241,17 +243,6 @@ $productos = $conexion->query($sql)->fetchAll();
 
                 // Colores
                 $colorStock = 'bg-success';
-                // --- LOGICA VENCIMIENTO (AGREGAR ACA) ---
-                $es_vencimiento = false;
-                if(!empty($p->fecha_vencimiento)) {
-                    $dias_alerta = 30; // Podes cambiar esto o leer de config si queres
-                    $hoy = date('Y-m-d');
-                    $limite = date('Y-m-d', strtotime("+$dias_alerta days"));
-                    if($p->fecha_vencimiento >= $hoy && $p->fecha_vencimiento <= $limite && $p->activo) {
-                        $es_vencimiento = true;
-                    }
-                }
-                
                 $txtStock = 'text-success';
                 if($stock <= $min * 2) { $colorStock = 'bg-warning'; $txtStock = 'text-warning'; }
                 if($stock <= $min) { $colorStock = 'bg-danger'; $txtStock = 'text-danger'; }
@@ -259,22 +250,7 @@ $productos = $conexion->query($sql)->fetchAll();
                 // Clases Estado
                 $claseCard = $p->activo ? '' : 'producto-inactivo';
                 $estadoData = $p->activo ? 'activos' : 'pausados';
-                if($stock <= $min) $estadoData .= ' bajo_stock';
-                if(!empty($p->fecha_vencimiento)) {
-                    // Usamos 30 días para coincidir con el dashboard
-                    $fecha_limite = date('Y-m-d', strtotime("+30 days")); 
-                    if($p->fecha_vencimiento >= date('Y-m-d') && $p->fecha_vencimiento <= $fecha_limite && $p->activo) {
-                        $estadoData .= ' vencimientos'; // Esto es lo que lee el filtro
-                    }
-                }
-
-                // --- NUEVO: Detectar Vencimientos (30 días) ---
-                if(!empty($p->fecha_vencimiento)) {
-                    $fecha_limite = date('Y-m-d', strtotime("+30 days"));
-                    if($p->fecha_vencimiento >= date('Y-m-d') && $p->fecha_vencimiento <= $fecha_limite && $p->activo) {
-                        $estadoData .= ' vencimientos';
-                    }
-                }
+                if($stock <= $min) $estadoData .= ' bajo_stock'; // Concatenamos para que el filtro lo detecte
             ?>
             
             <div class="col-6 col-md-4 col-lg-3 item-grid" 
@@ -319,9 +295,7 @@ $productos = $conexion->query($sql)->fetchAll();
                                 <span class="fw-bold <?php echo $txtStock; ?>"><?php echo $stock; ?> u.</span>
                             </div>
                         </div>
-                        <?php if($es_vencimiento): ?>
-                            <span class="badge bg-danger">Vence: <?php echo date('d/m', strtotime($p->fecha_vencimiento)); ?></span>
-                        <?php endif; ?>    
+
                         <div class="stock-track" title="Nivel de Stock">
                             <div class="stock-fill <?php echo $colorStock; ?>" style="width: <?php echo $pct; ?>%"></div>
                         </div>
@@ -517,25 +491,6 @@ $productos = $conexion->query($sql)->fetchAll();
                     Swal.fire('Error', res.msg, 'error');
                 }
             }, 'json');
-        });
-    </script>
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            // 1. Leer el parámetro ?filtro=... de la URL
-            const params = new URLSearchParams(window.location.search);
-            let filtro = params.get('filtro');
-
-            if(filtro) {
-                // 2. Corregir discrepancia: Dashboard manda 'stock_bajo', pero el Select usa 'bajo_stock'
-                if(filtro === 'stock_bajo') filtro = 'bajo_stock';
-
-                // 3. Seleccionar la opción en el menú y aplicar filtro
-                const select = document.getElementById('filtroEstado');
-                if(select && select.querySelector(`option[value="${filtro}"]`)) {
-                    select.value = filtro;
-                    aplicarFiltros(); // Ejecuta tu función existente
-                }
-            }
         });
     </script>
 </body>

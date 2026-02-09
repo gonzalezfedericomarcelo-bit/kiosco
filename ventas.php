@@ -20,29 +20,31 @@ try {
     $cupones_db = $conexion->query($sqlCupones)->fetchAll(PDO::FETCH_ASSOC);
 } catch (Exception $e) { $cupones_db = []; }
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Caja - KioscoManager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <link href="https://cdn.jsdelivr.net/npm/sweetalert2@11/dist/sweetalert2.min.css" rel="stylesheet">
-    <style>
-        .tabla-ventas { height: 450px; overflow-y: auto; background: white; border: 1px solid #dee2e6; }
-        @media (max-width: 992px) { .tabla-ventas { height: 300px; } }
-        .total-box { background: #212529; color: #0dfd05; padding: 15px; border-radius: 8px; font-family: monospace; letter-spacing: 1px; }
-        #lista-resultados, #lista-clientes-modal { max-height: 250px; overflow-y: auto; }
-        .item-resultado { padding: 12px; cursor: pointer; border-bottom: 1px solid #eee; transition: 0.2s; background: white; }
-        .item-resultado:hover { background-color: #e9ecef; padding-left: 15px; }
-        @keyframes parpadeo { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
-        .btn-pausada-activa { animation: parpadeo 1.5s infinite; background-color: #ffc107 !important; color: #000 !important; border: 2px solid #e0a800 !important; }
-    </style>
-</head>
-<body class="bg-light">
+<?php require_once 'includes/layout_header.php'; ?>
 
-    <?php include 'includes/menu.php'; ?>
+
+<style>
+    /* TUS ESTILOS ORIGINALES */
+    .tabla-ventas { height: 450px; overflow-y: auto; background: white; border: 1px solid #dee2e6; border-radius: 8px; }
+    @media (max-width: 992px) { .tabla-ventas { height: 300px; } }
+    
+    .total-box { 
+        background: #212529; color: #0dfd05; padding: 20px; border-radius: 12px; 
+        font-family: 'Courier New', monospace; letter-spacing: 1px; border: 4px solid #333;
+        box-shadow: inset 0 0 20px rgba(0,255,0,0.1);
+    }
+    
+    #lista-resultados, #lista-clientes-modal { max-height: 250px; overflow-y: auto; }
+    
+    .item-resultado { padding: 12px; cursor: pointer; border-bottom: 1px solid #eee; transition: 0.2s; background: white; }
+    .item-resultado:hover { background-color: #e3f2fd; padding-left: 15px; border-left: 4px solid #75AADB; }
+    
+    @keyframes parpadeo { 0% { opacity: 1; } 50% { opacity: 0.6; } 100% { opacity: 1; } }
+    .btn-pausada-activa { animation: parpadeo 1.5s infinite; background-color: #ffc107 !important; color: #000 !important; border: 2px solid #e0a800 !important; }
+
+    .card-pos { border: none; box-shadow: 0 4px 15px rgba(0,0,0,0.05); border-radius: 12px; }
+    
+</style>
 
     <div class="container pb-5"> 
         <div class="row g-4">
@@ -311,16 +313,16 @@ try {
         </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     
     <script>
         let carrito = []; 
         let pagosMixtosConfirmados = null;
         const cuponesDB = <?php echo json_encode($cupones_db); ?>;
-        const modalCliente = new bootstrap.Modal(document.getElementById('modalBuscarCliente'));
-        const modalMixto = new bootstrap.Modal(document.getElementById('modalPagoMixto'));
+        // Modo compatible para evitar error de "bootstrap is not defined"
+        const modalCliente = { show: function(){ $('#modalBuscarCliente').modal('show'); }, hide: function(){ $('#modalBuscarCliente').modal('hide'); } };
+        const modalMixto = { show: function(){ $('#modalPagoMixto').modal('show'); }, hide: function(){ $('#modalPagoMixto').modal('hide'); } };
 
         $(document).ready(function() { 
             verificarVentaPausada(); 
@@ -837,48 +839,78 @@ if(parseFloat(p.precio_oferta) > 0) {
                 // --- FUNCIONES DE SUSPENSIÓN (AGREGADAS AL FINAL) ---
 
         function suspenderVentaActual() {
-            if(carrito.length === 0) return Swal.fire('Atención', 'No hay productos para suspender.', 'warning');
-            
+            if (carrito.length === 0) return Swal.fire('Atención', 'No hay productos para suspender.', 'warning');
+
             let totalVenta = parseFloat($('#total-venta').attr('data-total-final')) || 0;
+            // Tomamos el nombre del cliente actual como sugerencia inicial
             let nombreCliente = $('#lbl-nombre-cliente').text();
-            
-            // Usamos fetch para enviar JSON en el cuerpo (body), que es lo que espera tu PHP
-            fetch('suspender_guardar.php', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    carrito: carrito,
-                    total: totalVenta,
-                    referencia: nombreCliente
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if(data.status === 'success') {
-                    vaciarCarrito();
-                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
-                    Toast.fire({icon: 'success', title: 'Venta suspendida correctamente'});
-                } else {
-                    Swal.fire('Error', data.msg || 'No se pudo suspender', 'error');
+            let valorInicial = (nombreCliente !== 'Consumidor Final') ? nombreCliente : '';
+
+            // 1. Pedir Referencia con ventana en el medio
+            Swal.fire({
+                title: 'Suspender Venta',
+                text: 'Escribí una referencia para identificar al cliente (Ej: "Chico gorra roja", "Señora rubia"):',
+                input: 'text',
+                inputValue: valorInicial,
+                showCancelButton: true,
+                confirmButtonText: '<i class="bi bi-save"></i> Suspender',
+                cancelButtonText: 'Cancelar',
+                confirmButtonColor: '#ffc107', // Color amarillo de advertencia/pausa
+                cancelButtonColor: '#6c757d',
+                inputValidator: (value) => {
+                    if (!value) {
+                        return '¡Por favor escribí alguna referencia para no perderla!';
+                    }
                 }
-            })
-            .catch(error => {
-                console.error(error);
-                Swal.fire('Error', 'Error de conexión al suspender', 'error');
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    let referencia = result.value;
+
+                    // 2. Enviar a guardar
+                    fetch('acciones/suspender_guardar.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            carrito: carrito,
+                            total: totalVenta,
+                            referencia: referencia // Acá va lo que escribiste
+                        })
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.status === 'success') {
+                            vaciarCarrito();
+                            
+                            // 3. Cartel de éxito en el medio (SweetAlert standard)
+                            Swal.fire({
+                                icon: 'success',
+                                title: '¡Venta Suspendida!',
+                                text: 'La venta se guardó correctamente bajo la referencia: "' + referencia + '"',
+                                showConfirmButton: true,
+                                timer: 2000 // Se cierra solo a los 2 segundos o si tocas OK
+                            });
+                        } else {
+                            Swal.fire('Error', data.msg || 'No se pudo suspender', 'error');
+                        }
+                    })
+                    .catch(error => {
+                        console.error(error);
+                        Swal.fire('Error', 'Error de conexión al suspender', 'error');
+                    });
+                }
             });
         }
 
         function abrirModalSuspendidas() {
-            $.get('suspender_listar.php', function(html) {
+            $.get('acciones/suspender_listar.php', function(html) {
                 $('#listaSuspendidasBody').html(html);
-                const modal = new bootstrap.Modal(document.getElementById('modalSuspendidas'));
-                modal.show();
+                $('#modalSuspendidas').modal('show');
             });
         }
 
         // Esta función la usa el botón "Recuperar" que viene del PHP
         window.recuperarVentaId = function(idVentaSusp) {
-            $.getJSON('suspender_recuperar.php', { id: idVentaSusp }, function(res) {
+            $.getJSON('acciones/suspender_recuperar.php', { id: idVentaSusp }, function(res) {
                 if(res.status === 'success') {
                     vaciarCarrito();
                     
@@ -913,8 +945,36 @@ if(parseFloat(p.precio_oferta) > 0) {
                 }
             });
         };
+        function eliminarVentaSuspendida(id) {
+            Swal.fire({
+                title: '¿Eliminar esta espera?',
+                text: "No podrás recuperarla después.",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#d33',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, eliminar',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    $.post('acciones/suspender_eliminar.php', { id: id }, function(res) {
+                        if(res.status === 'success') {
+                            // Recargar la lista para que desaparezca la eliminada
+                            $.get('acciones/suspender_listar.php', function(html) {
+                                $('#listaSuspendidasBody').html(html);
+                            });
+                            
+                            // Pequeña notificación
+                            const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 1500});
+                            Toast.fire({icon: 'success', title: 'Eliminada'});
+                        } else {
+                            Swal.fire('Error', res.msg, 'error');
+                        }
+                    }, 'json');
+                }
+            });
+        }
         
     </script>
 
-</body>
-</html>
+<?php require_once 'includes/layout_footer.php'; ?>

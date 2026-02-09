@@ -37,6 +37,11 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $stock = !empty($_POST['stock_actual']) ? $_POST['stock_actual'] : 0;
     $minimo = !empty($_POST['stock_minimo']) ? $_POST['stock_minimo'] : 5;
     
+    // NUEVO: Vencimientos
+    $fecha_venc = !empty($_POST['fecha_vencimiento']) ? $_POST['fecha_vencimiento'] : NULL;
+    $dias_alerta = !empty($_POST['dias_alerta']) ? $_POST['dias_alerta'] : 30;
+    
+    
     // CORRECCIÓN 2: Recuperar tipo correctamente desde el input oculto
     $es_combo = (isset($_POST['tipo']) && $_POST['tipo'] == 'combo') ? 'combo' : 'unitario';
     
@@ -72,13 +77,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                     codigo_barras=?, descripcion=?, id_categoria=?, id_proveedor=?, 
                     precio_costo=?, precio_venta=?, precio_oferta=?, 
                     stock_actual=?, stock_minimo=?, tipo=?, imagen_url=?, 
-                    es_vegano=?, es_celiaco=? 
+                    es_vegano=?, es_celiaco=?,
+                    fecha_vencimiento=?, dias_alerta=? 
                     WHERE id=?";
-            $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco, $id]);
+            $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco, $fecha_venc, $dias_alerta, $id]);
         } else {
             // CREAR
-            $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, tipo, imagen_url, activo, es_vegano, es_celiaco) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)";
-            $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco]);
+            $sql = "INSERT INTO productos (codigo_barras, descripcion, id_categoria, id_proveedor, precio_costo, precio_venta, precio_oferta, stock_actual, stock_minimo, tipo, imagen_url, activo, es_vegano, es_celiaco, fecha_vencimiento, dias_alerta) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?, ?, ?)";
+            $conexion->prepare($sql)->execute([$codigo, $descripcion, $categoria, $proveedor, $costo, $venta, $oferta, $stock, $minimo, $es_combo, $imagen_final, $es_vegano, $es_celiaco, $fecha_venc, $dias_alerta]);
         }
         header("Location: productos.php"); exit;
     } catch (Exception $e) {
@@ -212,6 +218,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                                 <div class="col-md-3">
                                     <label class="form-label fw-bold">Stock Actual</label>
                                     <input type="number" step="0.01" name="stock_actual" class="form-control" value="<?php echo $producto['stock_actual'] ?? 0; ?>">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-primary">Vencimiento</label>
+                                    <input type="date" name="fecha_vencimiento" class="form-control" value="<?php echo $producto['fecha_vencimiento'] ?? ''; ?>">
+                                </div>
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-muted">Avisar (días antes)</label>
+                                    <input type="number" name="dias_alerta" class="form-control" value="<?php echo $producto['dias_alerta'] ?? 30; ?>" placeholder="Ej: 30">
+                                </div>
+                                
+                                <div class="col-md-3">
+                                    <label class="form-label fw-bold text-warning">Stock Mínimo</label>
+                                    <input type="number" step="0.01" name="stock_minimo" class="form-control border-warning" value="<?php echo $producto['stock_minimo'] ?? 5; ?>">
                                 </div>
                                 
                                 <div class="col-12 mt-4">

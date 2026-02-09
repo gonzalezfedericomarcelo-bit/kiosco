@@ -202,11 +202,12 @@ try {
 
                         <div class="d-flex gap-2 mb-2">
                             <button type="button" class="btn btn-warning fw-bold flex-fill" onclick="suspenderVentaActual()">
-                                <i class="bi bi-pause-circle"></i> ESPERA
-                            </button>
-                            <button type="button" class="btn btn-info fw-bold flex-fill text-white" onclick="abrirModalSuspendidas()">
-                                <i class="bi bi-arrow-counterclockwise"></i> RECUPERAR
-                            </button>
+    <i class="bi bi-pause-circle"></i> ESPERA
+</button>
+<button type="button" class="btn btn-info fw-bold flex-fill text-white" onclick="abrirModalSuspendidas()">
+    <i class="bi bi-arrow-counterclockwise"></i> RECUPERAR
+</button>
+
                         </div>
 
 
@@ -330,8 +331,9 @@ try {
         document.addEventListener('keydown', function(e) {
             if(e.key === 'F2') { e.preventDefault(); $('#buscar-producto').focus(); }
             if(e.key === 'F4') { e.preventDefault(); abrirModalClientes(); }
-            if(e.key === 'F7') { e.preventDefault(); pausarVenta(); }
-            if(e.key === 'F8') { e.preventDefault(); recuperarVenta(); }
+                        if(e.key === 'F7') { e.preventDefault(); suspenderVentaActual(); }
+            if(e.key === 'F8') { e.preventDefault(); abrirModalSuspendidas(); }
+
             if(e.key === 'F9') { e.preventDefault(); $('#btn-finalizar').click(); }
             if(Swal.isVisible()) {
                 if(e.key === 'Enter') { 
@@ -831,6 +833,87 @@ if(parseFloat(p.precio_oferta) > 0) {
                 Swal.fire('Error', 'Fallo de conexión.', 'error');
             });
         });
+        
+                // --- FUNCIONES DE SUSPENSIÓN (AGREGADAS AL FINAL) ---
+
+        function suspenderVentaActual() {
+            if(carrito.length === 0) return Swal.fire('Atención', 'No hay productos para suspender.', 'warning');
+            
+            let totalVenta = parseFloat($('#total-venta').attr('data-total-final')) || 0;
+            let nombreCliente = $('#lbl-nombre-cliente').text();
+            
+            // Usamos fetch para enviar JSON en el cuerpo (body), que es lo que espera tu PHP
+            fetch('suspender_guardar.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    carrito: carrito,
+                    total: totalVenta,
+                    referencia: nombreCliente
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if(data.status === 'success') {
+                    vaciarCarrito();
+                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
+                    Toast.fire({icon: 'success', title: 'Venta suspendida correctamente'});
+                } else {
+                    Swal.fire('Error', data.msg || 'No se pudo suspender', 'error');
+                }
+            })
+            .catch(error => {
+                console.error(error);
+                Swal.fire('Error', 'Error de conexión al suspender', 'error');
+            });
+        }
+
+        function abrirModalSuspendidas() {
+            $.get('suspender_listar.php', function(html) {
+                $('#listaSuspendidasBody').html(html);
+                const modal = new bootstrap.Modal(document.getElementById('modalSuspendidas'));
+                modal.show();
+            });
+        }
+
+        // Esta función la usa el botón "Recuperar" que viene del PHP
+        window.recuperarVentaId = function(idVentaSusp) {
+            $.getJSON('suspender_recuperar.php', { id: idVentaSusp }, function(res) {
+                if(res.status === 'success') {
+                    vaciarCarrito();
+                    
+                    // Reconstruir carrito con los datos que vienen de la base de datos
+                    if(res.items && res.items.length > 0) {
+                        res.items.forEach(item => {
+                            carrito.push({
+                                id: item.id,
+                                descripcion: item.nombre, // Adaptamos nombre -> descripcion
+                                precio: parseFloat(item.precio),
+                                cantidad: parseInt(item.cantidad)
+                            });
+                        });
+                    }
+
+                    // Recuperar Cliente si existe
+                    if(res.cliente) {
+                        seleccionarCliente(res.cliente.id, res.cliente.nombre, res.cliente.saldo, res.cliente.puntos);
+                    }
+                    
+                    render(); // Actualizar tabla visual
+                    
+                    // Cerrar modal
+                    const modalEl = document.getElementById('modalSuspendidas');
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if(modalInstance) modalInstance.hide();
+                    
+                    const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});
+                    Toast.fire({icon: 'success', title: 'Venta recuperada'});
+                } else {
+                    Swal.fire('Error', 'No se pudo recuperar la venta', 'error');
+                }
+            });
+        };
+        
     </script>
 
 </body>

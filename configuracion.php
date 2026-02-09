@@ -1,5 +1,5 @@
 <?php
-// configuracion.php - VERSIÓN CON MÓDULO AFIP Y CARGA DE CERTIFICADOS
+// configuracion.php - VERSIÓN RESTAURADA (AFIP + MÓDULOS + WHATSAPP PEDIDOS)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
@@ -8,7 +8,8 @@ require_once 'includes/db.php';
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_general'])) {
     $nombre = $_POST['nombre_negocio'];
     $direccion = $_POST['direccion'];
-    $telefono = $_POST['telefono'];
+    $telefono = $_POST['telefono']; // Teléfono general
+    $wa_pedidos = $_POST['whatsapp_pedidos']; // NUEVO: WhatsApp Pedidos
     $cuit = $_POST['cuit'];
     $mensaje = $_POST['mensaje_ticket'];
     
@@ -34,20 +35,24 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_general'])) {
     if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
         $nombre_archivo = 'logo_' . time() . '.png';
         $destino = 'uploads/' . $nombre_archivo;
+        // Crear carpeta si no existe
+        if(!is_dir('uploads')) mkdir('uploads');
+        
         if (move_uploaded_file($_FILES['logo']['tmp_name'], $destino)) {
             $logo_url = $destino;
         }
     }
 
+    // ACTUALIZACIÓN SQL (INCLUYE whatsapp_pedidos)
     $sql = "UPDATE configuracion SET 
-            nombre_negocio=?, direccion_local=?, telefono_whatsapp=?, cuit=?, mensaje_ticket=?, 
+            nombre_negocio=?, direccion_local=?, telefono_whatsapp=?, whatsapp_pedidos=?, cuit=?, mensaje_ticket=?, 
             color_barra_nav=?, color_botones=?, color_fondo=?, color_secundario=?, direccion_degradado=?, 
             modulo_clientes=?, modulo_stock=?, modulo_reportes=?, modulo_fidelizacion=?, logo_url=?,
             dias_alerta_vencimiento=?, dinero_por_punto=?
             WHERE id=1";
             
     $conexion->prepare($sql)->execute([
-        $nombre, $direccion, $telefono, $cuit, $mensaje, 
+        $nombre, $direccion, $telefono, $wa_pedidos, $cuit, $mensaje, 
         $color_nav, $color_btn, $color_bg, $color_sec, $dir_deg,
         $mod_cli, $mod_stk, $mod_rep, $mod_fid, $logo_url,
         $dias_alerta, $dinero_punto
@@ -155,10 +160,19 @@ if(!$afip) {
                                             <label class="form-label fw-bold">Dirección</label>
                                             <input type="text" name="direccion" class="form-control" value="<?php echo $conf['direccion_local']; ?>">
                                         </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">WhatsApp / Teléfono</label>
+                                        
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold">Tel. General</label>
                                             <input type="text" name="telefono" class="form-control" value="<?php echo $conf['telefono_whatsapp']; ?>">
+                                            <div class="form-text small">Contacto general</div>
                                         </div>
+                                        <div class="col-md-3">
+                                            <label class="form-label fw-bold text-success"><i class="bi bi-whatsapp"></i> WA Pedidos</label>
+                                            <input type="text" name="whatsapp_pedidos" class="form-control border-success" 
+                                                   value="<?php echo $conf['whatsapp_pedidos'] ?? ''; ?>" placeholder="549...">
+                                            <div class="form-text small">Para Tienda/Revista</div>
+                                        </div>
+                                        
                                         <div class="col-12">
                                             <label class="form-label fw-bold">Mensaje al pie del Ticket</label>
                                             <textarea name="mensaje_ticket" class="form-control" rows="2"><?php echo $conf['mensaje_ticket']; ?></textarea>
@@ -239,6 +253,22 @@ if(!$afip) {
                             </div>
                         </div>
                     </div>
+                    <div class="col-md-6 mb-4">
+    <div class="card shadow-sm border-primary h-100">
+        <div class="card-body text-center d-flex flex-column justify-content-center">
+            <h5 class="card-title text-primary fw-bold">
+                <i class="bi bi-upload"></i> Importación Masiva
+            </h5>
+            <p class="card-text text-muted">
+                Subir lista de precios y productos desde Excel (CSV).
+                Actualiza stock y precios automáticamente.
+            </p>
+            <a href="importador_maestro.php" class="btn btn-primary fw-bold mt-auto">
+                IR A IMPORTAR
+            </a>
+        </div>
+    </div>
+</div>
                 </div>
             </div>
 

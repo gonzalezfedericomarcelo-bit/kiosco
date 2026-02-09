@@ -1,5 +1,5 @@
 <?php
-// productos.php - CATÁLOGO VISUAL CON MULTI-FILTROS EN TIEMPO REAL
+// productos.php - CATÁLOGO VISUAL CON COSTO Y GANANCIA
 session_start();
 require_once 'includes/db.php';
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
@@ -17,19 +17,16 @@ if(isset($_GET['toggle_id'])) {
 if (isset($_GET['borrar'])) {
     $id_borrar = $_GET['borrar'];
     
-    // [NUEVO] Paso previo: Verificar si es un combo para borrar también la regla de oferta
+    // Verificar si es combo para borrar regla
     $stmtCheck = $conexion->prepare("SELECT codigo_barras, tipo FROM productos WHERE id = ?");
     $stmtCheck->execute([$id_borrar]);
     $prodData = $stmtCheck->fetch(PDO::FETCH_ASSOC);
 
     if ($prodData && $prodData['tipo'] === 'combo') {
-        // Si es combo, borramos la regla de la tabla 'combos' usando el código
         $conexion->prepare("DELETE FROM combos WHERE codigo_barras = ?")->execute([$prodData['codigo_barras']]);
     }
-    // [FIN NUEVO]
 
     try {
-        // Primero intentamos eliminarlo físicamente de la base de datos
         $stmt = $conexion->prepare("DELETE FROM productos WHERE id = ?");
         $stmt->execute([$id_borrar]);
         
@@ -38,18 +35,16 @@ if (isset($_GET['borrar'])) {
         $conexion->prepare("INSERT INTO auditoria (fecha, id_usuario, accion, detalles) VALUES (NOW(), ?, 'ELIMINAR_FISICO', ?)")->execute([$_SESSION['usuario_id'], $detalles]);
         
     } catch (PDOException $e) {
-        // SI FALLA (porque tiene ventas históricas), lo desactivamos en su lugar para no romper la base de datos
         $conexion->prepare("UPDATE productos SET activo=0 WHERE id = ?")->execute([$id_borrar]);
     }
 
     header("Location: productos.php"); exit;
 }
 
-
-// 3. OBTENER DATOS (Traemos TODO para filtrar con JS)
+// 3. OBTENER DATOS
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
 
-// Consulta principal (Agregamos datos de combos para mostrar badge correcto)
+// Consulta principal
 $sql = "SELECT p.*, c.nombre as cat, cb.fecha_inicio, cb.fecha_fin, cb.es_ilimitado FROM productos p JOIN categorias c ON p.id_categoria=c.id LEFT JOIN combos cb ON p.codigo_barras = cb.codigo_barras ORDER BY p.id DESC";
 $productos = $conexion->query($sql)->fetchAll();
 ?>
@@ -66,7 +61,6 @@ $productos = $conexion->query($sql)->fetchAll();
     <style>
         body { background-color: #f4f6f9; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         
-        /* BARRA DE FILTROS FLOTANTE */
         .filter-bar {
             background: white;
             padding: 15px;
@@ -76,7 +70,6 @@ $productos = $conexion->query($sql)->fetchAll();
             border: 1px solid #eef0f3;
         }
 
-        /* TARJETA DE PRODUCTO */
         .card-producto {
             transition: all 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
             border: none;
@@ -93,7 +86,6 @@ $productos = $conexion->query($sql)->fetchAll();
             box-shadow: 0 12px 25px rgba(0,0,0,0.1);
         }
 
-        /* ESTADO INACTIVO */
         .producto-inactivo {
             filter: grayscale(100%);
             opacity: 0.6;
@@ -109,7 +101,6 @@ $productos = $conexion->query($sql)->fetchAll();
             z-index: 10;
         }
 
-        /* IMAGEN */
         .img-wrapper {
             width: 100%;
             height: 220px;
@@ -129,7 +120,6 @@ $productos = $conexion->query($sql)->fetchAll();
         }
         .card-producto:hover .img-prod { transform: scale(1.08); }
 
-        /* BOTON FLOTANTE DE CÁMARA */
         .btn-foto-rapida {
             position: absolute;
             bottom: 10px;
@@ -151,16 +141,13 @@ $productos = $conexion->query($sql)->fetchAll();
         .img-wrapper:hover .btn-foto-rapida { opacity: 1; }
         .btn-foto-rapida:hover { background: #0d6efd; color: white; transform: scale(1.1); }
 
-        /* DATOS */
         .card-body { padding: 18px; }
         .precio-tag { font-size: 1.5rem; font-weight: 800; color: #212529; letter-spacing: -0.5px; }
         .cat-badge { font-size: 0.7rem; text-transform: uppercase; font-weight: 700; color: #adb5bd; letter-spacing: 0.8px; }
         
-        /* STOCK BAR */
         .stock-track { height: 6px; background: #e9ecef; border-radius: 10px; margin-top: 12px; overflow: hidden; }
         .stock-fill { height: 100%; border-radius: 10px; transition: width 0.5s; }
 
-        /* FOOTER TARJETA */
         .card-footer-custom {
             background: #fff;
             border-top: 1px solid #f8f9fa;
@@ -219,6 +206,7 @@ $productos = $conexion->query($sql)->fetchAll();
                         <option value="activos">✅ Solo Activos</option>
                         <option value="pausados">⏸️ Pausados / Inactivos</option>
                         <option value="bajo_stock">⚠️ Stock Bajo / Crítico</option>
+                        <option value="vencimientos">📅 Próximos a Vencer</option>
                     </select>
                 </div>
 
@@ -243,38 +231,78 @@ $productos = $conexion->query($sql)->fetchAll();
         <div class="row g-3" id="gridProductos">
             
             <?php foreach($productos as $p): 
-                // Preparar datos visuales
                 $img = !empty($p->imagen_url) ? $p->imagen_url : 'img/producto_default.png';
                 if(strpos($img, 'http') === false && !file_exists($img)) $img = 'https://via.placeholder.com/400x400?text=Sin+Imagen';
 
-                // Cálculos de Stock
                 $stock = floatval($p->stock_actual);
                 $min = floatval($p->stock_minimo);
                 $max_ref = $min * 5; 
                 $pct = ($max_ref > 0) ? ($stock / $max_ref) * 100 : 0;
                 if($pct > 100) $pct = 100;
 
-                // Colores
                 $colorStock = 'bg-success';
                 $txtStock = 'text-success';
                 
-                // SI ES COMBO: Lo pintamos de azul y barra llena (100%)
                 if($p->tipo === 'combo') {
                     $colorStock = 'bg-primary'; 
                     $txtStock = 'text-primary';
                     $pct = 100; 
                 } else {
-                    // SI ES PRODUCTO NORMAL: Calculamos semáforo
                     if($stock <= $min * 2) { $colorStock = 'bg-warning'; $txtStock = 'text-warning'; }
                     if($stock <= $min) { $colorStock = 'bg-danger'; $txtStock = 'text-danger'; }
                 }
 
-                // Clases Estado
                 $claseCard = $p->activo ? '' : 'producto-inactivo';
                 $estadoData = $p->activo ? 'activos' : 'pausados';
-                
-                // Solo marcamos "bajo_stock" si NO es un combo
                 if($stock <= $min && $p->tipo !== 'combo') $estadoData .= ' bajo_stock';
+                
+                // Lógica de Vencimientos (Agregado)
+                if(!empty($p->fecha_vencimiento) && $p->fecha_vencimiento != '0000-00-00') {
+                    $dias_alerta = !empty($p->dias_alerta) ? $p->dias_alerta : 30; // 30 días por defecto
+                    $fecha_limite = date('Y-m-d', strtotime("+$dias_alerta days"));
+                    $hoy = date('Y-m-d');
+                    
+                    // Si ya venció o vence dentro del rango de alerta
+                    if($p->fecha_vencimiento <= $fecha_limite) {
+                        $estadoData .= ' vencimientos';
+                    }
+                }
+
+                // CÁLCULO DE GANANCIA Y COSTO REAL (Soporte para Combos)
+                $precioVenta = !empty($p->precio_oferta) && $p->precio_oferta > 0 ? $p->precio_oferta : $p->precio_venta;
+                $costo = floatval($p->precio_costo);
+
+                // SI ES COMBO: Intentamos calcular costo real
+                if($p->tipo === 'combo') {
+                    // Intento 1: Buscar por ID directo
+                    $sqlCombo = "SELECT SUM(prod.precio_costo * ci.cantidad) 
+                                 FROM combo_items ci 
+                                 JOIN productos prod ON ci.id_producto = prod.id 
+                                 WHERE ci.id_combo = ?";
+                    $stmtC = $conexion->prepare($sqlCombo);
+                    $stmtC->execute([$p->id]);
+                    $costoCalc = $stmtC->fetchColumn();
+
+                    // Intento 2 (Si da 0): Buscar por Código de Barras (a veces se guarda así)
+                    if(!$costoCalc || $costoCalc == 0) {
+                        $stmtC2 = $conexion->prepare("
+                            SELECT SUM(prod.precio_costo * ci.cantidad) 
+                            FROM combo_items ci 
+                            JOIN productos prod ON ci.id_producto = prod.id 
+                            JOIN combos c ON c.id = ci.id_combo 
+                            WHERE c.codigo_barras = ?
+                        ");
+                        $stmtC2->execute([$p->codigo_barras]);
+                        $costoCalc = $stmtC2->fetchColumn();
+                    }
+
+                    if($costoCalc > 0) {
+                        $costo = floatval($costoCalc);
+                    }
+                }
+
+                $ganancia = $precioVenta - $costo;
+                $claseGanancia = $ganancia > 0 ? 'text-success' : ($ganancia < 0 ? 'text-danger' : 'text-muted');
             ?>
             
             <div class="col-6 col-md-4 col-lg-3 item-grid" 
@@ -324,7 +352,7 @@ $productos = $conexion->query($sql)->fetchAll();
                         </h6>
                         <small class="text-muted font-monospace" style="font-size:0.75rem"><?php echo $p->codigo_barras; ?></small>
 
-                        <div class="d-flex justify-content-between align-items-end mt-3">
+                        <div class="d-flex justify-content-between align-items-end mt-2">
                             <div>
                                 <?php if(!empty($p->precio_oferta) && $p->precio_oferta > 0): ?>
                                     <div class="text-decoration-line-through text-muted small">$<?php echo number_format($p->precio_venta, 0, ',', '.'); ?></div>
@@ -339,6 +367,16 @@ $productos = $conexion->query($sql)->fetchAll();
                             </div>
                         </div>
 
+                        <div class="d-flex justify-content-between mt-2 pt-2 border-top bg-light rounded px-2 py-1">
+                            <div class="small text-muted lh-1">
+                                <span style="font-size:0.7rem">Costo</span><br>
+                                <span class="fw-bold text-dark">$<?php echo number_format($costo, 0, ',', '.'); ?></span>
+                            </div>
+                            <div class="small <?php echo $claseGanancia; ?> lh-1 text-end">
+                                <span style="font-size:0.7rem">Ganancia</span><br>
+                                <span class="fw-bold">$<?php echo number_format($ganancia, 0, ',', '.'); ?></span>
+                            </div>
+                        </div>
                         <div class="stock-track" title="Nivel de Stock">
                             <div class="stock-fill <?php echo $colorStock; ?>" style="width: <?php echo $pct; ?>%"></div>
                         </div>
@@ -428,14 +466,13 @@ $productos = $conexion->query($sql)->fetchAll();
                 let iNombre = item.dataset.nombre;
                 let iCodigo = item.dataset.codigo;
                 let iCat = item.dataset.cat;
-                let iEst = item.dataset.estado; // string: "activos bajo_stock"
+                let iEst = item.dataset.estado; 
 
                 let cumpleTxt = (iNombre.includes(txt) || iCodigo.includes(txt));
                 let cumpleCat = (cat === 'todos' || iCat === cat);
                 
                 let cumpleEst = true;
                 if(est !== 'todos') {
-                    // Si el filtro es activos/pausados/bajo_stock, verificamos si esa palabra está en el dataset
                     if(!iEst.includes(est)) cumpleEst = false;
                 }
 
@@ -447,8 +484,7 @@ $productos = $conexion->query($sql)->fetchAll();
                 }
             });
 
-            // 2. ORDENAR (Solo los visibles o todos, visualmente se reordenan en el DOM)
-            // Para mejor performance, ordenamos todos los items y los re-apendamos
+            // 2. ORDENAR
             items.sort((a, b) => {
                 let valA, valB;
                 switch(sort) {
@@ -462,25 +498,33 @@ $productos = $conexion->query($sql)->fetchAll();
                         return parseFloat(a.dataset.stock) - parseFloat(b.dataset.stock);
                     case 'recientes':
                     default:
-                        // Asumimos que el ID más alto es más reciente (descendente)
                         return parseInt(b.dataset.id) - parseInt(a.dataset.id);
                 }
             });
 
-            // Re-inyectar en orden
             items.forEach(item => grid.appendChild(item));
 
-            // UI
             counter.innerText = visibles;
             if(visibles === 0) noRes.classList.remove('d-none');
             else noRes.classList.add('d-none');
         }
 
-        // Event Listeners para Filtros
         buscador.addEventListener('keyup', aplicarFiltros);
         filtroCat.addEventListener('change', aplicarFiltros);
         filtroEst.addEventListener('change', aplicarFiltros);
         orden.addEventListener('change', aplicarFiltros);
+        // Detectar filtro desde URL (para cuando venís del Dashboard)
+        const urlParams = new URLSearchParams(window.location.search);
+        const paramFiltro = urlParams.get('filtro');
+        if(paramFiltro) {
+            // Si el filtro existe en el select, lo seleccionamos y aplicamos
+            const opcion = filtroEst.querySelector(`option[value="${paramFiltro}"]`);
+            if(opcion) {
+                filtroEst.value = paramFiltro;
+                // Pequeño delay para asegurar que el DOM esté listo
+                setTimeout(aplicarFiltros, 100);
+            }
+        }
 
         function limpiarFiltros() {
             buscador.value = '';
@@ -490,7 +534,7 @@ $productos = $conexion->query($sql)->fetchAll();
             aplicarFiltros();
         }
 
-        // --- 2. LÓGICA DE CÁMARA RÁPIDA (IGUAL QUE ANTES) ---
+        // --- 2. LÓGICA DE CÁMARA RÁPIDA ---
         let currentId = null;
         let cropper;
         const inputImg = document.getElementById('inputImageRapido');
@@ -528,7 +572,6 @@ $productos = $conexion->query($sql)->fetchAll();
                 imagen_base64: canvas.toDataURL('image/png')
             }, function(res) {
                 if(res.status === 'success') {
-                    // Actualizar imagen con timestamp para evitar caché
                     $('#img-' + currentId).attr('src', res.url + '?t=' + Date.now());
                     modalObj.hide();
                     const Toast = Swal.mixin({toast: true, position: 'top-end', showConfirmButton: false, timer: 2000});

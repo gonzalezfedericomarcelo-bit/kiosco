@@ -25,8 +25,9 @@ try {
     $conexion->exec("CREATE TABLE IF NOT EXISTS revista_paginas (id INT PRIMARY KEY AUTO_INCREMENT, nombre_referencia VARCHAR(100), posicion INT DEFAULT 5, imagen_url VARCHAR(255), boton_texto VARCHAR(50), boton_link VARCHAR(255), activa TINYINT DEFAULT 1)");
 } catch(Exception $e) {}
 
-// 1. GUARDAR CONFIGURACIÓN (PORTADA Y ESTILOS)
+// 1. GUARDAR CONFIGURACIÓN (PORTADA, CONTRATAPA Y ESTILOS)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['accion'] === 'guardar_config') {
+    // Variables Portada
     $titulo = $_POST['titulo_tapa'] ?? '';
     $subtitulo = $_POST['subtitulo_tapa'] ?? '';
     
@@ -37,10 +38,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
     $tapa_sub_color = $_POST['tapa_sub_color'] ?? '#ffffff';
     $fuente_global = $_POST['fuente_global'] ?? 'Poppins';
 
+    // Variables Contratapa (NUEVAS)
+    $ct_titulo = $_POST['contratapa_titulo'] ?? '';
+    $ct_texto = $_POST['contratapa_texto'] ?? '';
+    $ct_bg = $_POST['contratapa_bg_color'] ?? '#222222';
+    $ct_txt_col = $_POST['contratapa_texto_color'] ?? '#ffffff';
+    $ct_overlay = $_POST['contratapa_overlay'] ?? '0.5';
+    $ct_qr = isset($_POST['mostrar_qr']) ? 1 : 0;
+
     // Imágenes
-    $stmt_actual = $conexion->query("SELECT img_tapa FROM revista_config WHERE id=1");
+    $stmt_actual = $conexion->query("SELECT img_tapa, img_contratapa FROM revista_config WHERE id=1");
     $actual = $stmt_actual->fetch(PDO::FETCH_ASSOC);
     
+    // Imagen Tapa
     $ruta_tapa = $actual['img_tapa'] ?? '';
     if (!empty($_FILES['img_tapa']['name'])) {
         $dir = 'img/revista/';
@@ -49,17 +59,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['accion']) && $_POST['
         if(move_uploaded_file($_FILES['img_tapa']['tmp_name'], $dir . $nombre)) $ruta_tapa = $dir . $nombre;
     }
 
+    // Imagen Contratapa (NUEVA)
+    $ruta_contra = $actual['img_contratapa'] ?? '';
+    if (!empty($_FILES['img_contratapa']['name'])) {
+        $dir = 'img/revista/';
+        if (!is_dir($dir)) mkdir($dir, 0777, true);
+        $nombre = time() . '_contra_' . basename($_FILES['img_contratapa']['name']);
+        if(move_uploaded_file($_FILES['img_contratapa']['tmp_name'], $dir . $nombre)) $ruta_contra = $dir . $nombre;
+    }
+
     $sql = "UPDATE revista_config SET 
             titulo_tapa=?, subtitulo_tapa=?,
             tapa_banner_color=?, tapa_banner_opacity=?,
             img_tapa=?, tapa_overlay=?, tapa_tit_color=?, tapa_sub_color=?,
-            fuente_global=?
+            fuente_global=?,
+            contratapa_titulo=?, contratapa_texto=?, img_contratapa=?,
+            contratapa_bg_color=?, contratapa_texto_color=?, contratapa_overlay=?, mostrar_qr=?
             WHERE id=1";
     
     $stmt = $conexion->prepare($sql);
-    if($stmt->execute([$titulo, $subtitulo, $tapa_color, $tapa_opac, $ruta_tapa, $tapa_overlay, $tapa_tit_color, $tapa_sub_color, $fuente_global])) {
-        $mensaje = '✅ Configuración y Portada guardadas.';
+    if($stmt->execute([
+        $titulo, $subtitulo, $tapa_color, $tapa_opac, $ruta_tapa, $tapa_overlay, $tapa_tit_color, $tapa_sub_color, $fuente_global,
+        $ct_titulo, $ct_texto, $ruta_contra, $ct_bg, $ct_txt_col, $ct_overlay, $ct_qr
+    ])) {
+        $mensaje = '✅ Configuración guardada.';
         $tipo_mensaje = 'success';
+        // Recargar datos para ver cambios al instante
+        $revista_cfg = $conexion->query("SELECT * FROM revista_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
     } else {
         $mensaje = '❌ Error al guardar.';
         $tipo_mensaje = 'danger';
@@ -193,7 +219,50 @@ $paginas = $conexion->query("SELECT * FROM revista_paginas ORDER BY posicion ASC
                             </div>
                         </div>
                     </div>
+                    <div class="card mb-3 shadow-sm">
+                        <div class="card-header bg-secondary text-white">2. Contratapa (Final)</div>
+                        <div class="card-body">
+                            <div class="mb-2 text-center">
+                                <?php if(!empty($revista_cfg['img_contratapa'])): ?>
+                                    <img src="<?php echo $revista_cfg['img_contratapa']; ?>?v=<?php echo time(); ?>" class="preview-img">
+                                <?php else: ?>
+                                    <div class="p-3 bg-light text-muted border rounded">Sin imagen</div>
+                                <?php endif; ?>
+                            </div>
+                            
+                            <label class="small fw-bold">Imagen Fondo</label>
+                            <input type="file" name="img_contratapa" class="form-control form-control-sm mb-2">
+                            
+                            <label class="small fw-bold">Oscuridad Fondo</label>
+                            <input type="range" name="contratapa_overlay" class="form-range" min="0" max="0.9" step="0.1" value="<?php echo $revista_cfg['contratapa_overlay'] ?? '0.5'; ?>">
 
+                            <div class="mb-2">
+                                <label class="small">Título Despedida</label>
+                                <input type="text" name="contratapa_titulo" class="form-control form-control-sm" value="<?php echo $revista_cfg['contratapa_titulo'] ?? ''; ?>">
+                            </div>
+                            
+                            <div class="mb-2">
+                                <label class="small">Mensaje / Texto</label>
+                                <textarea name="contratapa_texto" class="form-control form-control-sm" rows="2"><?php echo $revista_cfg['contratapa_texto'] ?? ''; ?></textarea>
+                            </div>
+
+                            <div class="row g-2 mb-2">
+                                <div class="col-6">
+                                    <label class="small">Color Fondo</label>
+                                    <input type="color" name="contratapa_bg_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['contratapa_bg_color'] ?? '#222222'; ?>">
+                                </div>
+                                <div class="col-6">
+                                    <label class="small">Color Texto</label>
+                                    <input type="color" name="contratapa_texto_color" class="form-control form-control-color w-100" value="<?php echo $revista_cfg['contratapa_texto_color'] ?? '#ffffff'; ?>">
+                                </div>
+                            </div>
+                            
+                            <div class="form-check form-switch mt-2">
+                                <input class="form-check-input" type="checkbox" name="mostrar_qr" value="1" id="mqr" <?php echo ($revista_cfg['mostrar_qr'] ?? 1) ? 'checked' : ''; ?>>
+                                <label class="form-check-label small" for="mqr">Mostrar Código QR</label>
+                            </div>
+                        </div>
+                    </div>                
                     <button type="submit" class="btn btn-primary w-100 fw-bold py-3 mb-4 shadow-sm">GUARDAR CONFIGURACIÓN</button>
                 </form>
             </div>

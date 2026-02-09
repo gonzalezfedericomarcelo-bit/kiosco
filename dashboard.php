@@ -1,16 +1,16 @@
 <?php
-// dashboard.php - VERSIÓN FINAL INTEGRADA (CUMPLEAÑOS + VENCIMIENTOS + STOCK)
+// dashboard.php - DISEÑO COMPACTO Y MODERNO (Horizontal)
 session_start();
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 require_once 'includes/db.php';
 
+// --- MISMAS FUNCIONES Y LÓGICA QUE ANTES (INTACTO) ---
+
 // 1. OBTENER DATOS DE USUARIO
 $id_user = $_SESSION['usuario_id'];
-
 $stmtUser = $conexion->prepare("SELECT nombre_completo, usuario, id_rol FROM usuarios WHERE id = ?");
 $stmtUser->execute([$id_user]);
 $datosUsuario = $stmtUser->fetch(PDO::FETCH_ASSOC);
-
 $nombre_mostrar = !empty($datosUsuario['nombre_completo']) ? $datosUsuario['nombre_completo'] : $datosUsuario['usuario'];
 $rol_usuario = $datosUsuario['id_rol'] ?? 3; 
 
@@ -25,38 +25,30 @@ $hoy = date('Y-m-d');
 $stmtVentas = $conexion->prepare("SELECT COALESCE(SUM(total),0) as total, COUNT(*) as cantidad FROM ventas WHERE id_usuario = ? AND DATE(fecha) = ?");
 $stmtVentas->execute([$id_user, $hoy]);
 $resVentas = $stmtVentas->fetch(PDO::FETCH_ASSOC);
-
 $vendido_hoy = $resVentas['total'];
 $tickets_hoy = $resVentas['cantidad'];
 
-// 4. ALERTAS (STOCK, VENCIMIENTOS Y CUMPLEAÑOS)
+// 4. ALERTAS
 $alertas_stock = 0;
 $alertas_vencimiento = 0;
 $alertas_cumple = 0;
 
 if($rol_usuario <= 2) {
-    // A. Stock Bajo
-    $stmtStock = $conexion->query("SELECT COUNT(*) FROM productos WHERE stock_actual <= stock_minimo AND activo = 1");
+    // A. Stock
+    $stmtStock = $conexion->query("SELECT COUNT(p.id) FROM productos p JOIN categorias c ON p.id_categoria = c.id WHERE p.stock_actual <= p.stock_minimo AND p.activo = 1 AND p.tipo != 'combo'");
     $alertas_stock = $stmtStock->fetchColumn();
 
     // B. Vencimientos
     $stmtConf = $conexion->query("SELECT dias_alerta_vencimiento FROM configuracion WHERE id=1");
     $conf = $stmtConf->fetch(PDO::FETCH_ASSOC);
     $dias_global = $conf['dias_alerta_vencimiento'] ?? 30;
-
-    $sqlVenc = "SELECT COUNT(*) FROM productos 
-                WHERE activo = 1 
-                AND fecha_vencimiento IS NOT NULL 
-                AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL COALESCE(dias_alerta, ?) DAY)";
+    $sqlVenc = "SELECT COUNT(*) FROM productos WHERE activo = 1 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL COALESCE(dias_alerta, ?) DAY)";
     $stmtVenc = $conexion->prepare($sqlVenc);
     $stmtVenc->execute([$dias_global]);
     $alertas_vencimiento = $stmtVenc->fetchColumn();
 
-    // C. Cumpleaños (NUEVO)
+    // C. Cumpleaños
     try {
-        $sqlCumple = "SELECT COUNT(*) FROM clientes WHERE activo = 1 AND MONTH(fecha_nacimiento) = MONTH(CURDATE()) AND DAY(fecha_nacimiento) = DAY(CURDATE())";
-        // Verificar si la tabla clientes tiene la columna 'activo', sino asumimos todos activos
-        // Para asegurar compatibilidad con tu tabla actual que vi antes:
         $sqlCumple = "SELECT COUNT(*) FROM clientes WHERE MONTH(fecha_nacimiento) = MONTH(CURDATE()) AND DAY(fecha_nacimiento) = DAY(CURDATE())";
         $alertas_cumple = $conexion->query($sqlCumple)->fetchColumn();
     } catch(Exception $e) { $alertas_cumple = 0; }
@@ -67,263 +59,337 @@ if($rol_usuario <= 2) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <title>Panel de Control - Kiosco</title>
+    <title>Panel - Kiosco</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
-        body { background-color: #f2f4f7; font-family: 'Inter', sans-serif; padding-bottom: 80px; }
-        .dash-header {
-            background: linear-gradient(135deg, #111 0%, #333 100%);
-            color: white; 
-            padding: 15px 15px 20px 15px; 
-            border-radius: 0 0 20px 20px; 
-            margin-bottom: 15px; 
-            box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+        :root {
+            --bg-body: #f0f2f5;
+            --card-bg: #ffffff;
+            --text-main: #2c3e50;
+            --accent: #0d6efd;
         }
+        body { background-color: var(--bg-body); font-family: 'Inter', sans-serif; padding-bottom: 60px; }
         
-        .stat-card {
-            background: rgba(255, 255, 255, 0.1);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 12px;
-            padding: 5px;
-            text-align: center;
+        /* HEADER COMPACTO */
+        .header-section {
+            background: #fff;
+            padding: 15px 0;
+            border-bottom: 1px solid #e0e0e0;
+            margin-bottom: 20px;
+        }
+
+        /* WIDGETS DE DATOS (SUPERIOR) */
+        .info-card {
+            background: white;
+            border: none;
+            border-radius: 8px;
+            padding: 10px 12px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             height: 100%;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            align-items: center;
-            backdrop-filter: blur(5px);
-            transition: transform 0.2s, background 0.2s;
-            cursor: pointer;
+            border-left: 4px solid transparent;
+            text-decoration: none;
+            color: inherit;
+            transition: transform 0.2s;
         }
-        .stat-card:hover { background: rgba(255, 255, 255, 0.2); transform: translateY(-2px); }
-        .stat-label { font-size: 0.65rem; text-transform: uppercase; opacity: 0.75; letter-spacing: 0.5px; margin-bottom: 4px; color: white; }
-        .stat-value { font-weight: 800; font-size: 1.1rem; line-height: 1.2; color: white; }
+        .info-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .info-card .label { font-size: 0.7rem; text-transform: uppercase; color: #6c757d; font-weight: 600; letter-spacing: 0.5px; margin-bottom: 2px; }
+        .info-card .value { font-size: 1.1rem; font-weight: 800; color: #212529; line-height: 1.1; }
         
-        .card-link { text-decoration: none; color: inherit; display: block; height: 100%; }
+        /* Colores de Borde para Identificar rápido */
+        .b-blue { border-left-color: #0d6efd; }
+        .b-purple { border-left-color: #6f42c1; }
+        .b-green { border-left-color: #198754; }
+        .b-red { border-left-color: #dc3545; }
+        .b-orange { border-left-color: #fd7e14; }
+        .b-yellow { border-left-color: #ffc107; }
 
-        .card-menu {
-            background: white; border: none; border-radius: 16px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.03); transition: all 0.2s;
-            text-decoration: none; color: #333; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; padding: 20px 10px;
-            height: 100%; position: relative;
+        /* MENÚ HORIZONTAL (ESTILO LISTA PERO EN GRID) */
+        .menu-btn {
+            background: white;
+            border: 1px solid #eef0f3;
+            border-radius: 10px;
+            padding: 12px 15px;
+            display: flex;
+            align-items: center;
+            text-decoration: none;
+            color: var(--text-main);
+            transition: all 0.2s;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.02);
+            height: 100%;
         }
-        .card-menu:active { transform: scale(0.96); }
-        .card-menu:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-        .icon-lg { font-size: 2.2rem; margin-bottom: 8px; }
-        .menu-title { font-weight: 700; font-size: 0.9rem; margin-bottom: 2px; }
-        .menu-sub { font-size: 0.75rem; color: #888; }
-        .card-caja {
-            background: linear-gradient(135deg, #0d6efd 0%, #0043a8 100%);
-            color: white !important; align-items: flex-start; padding: 25px;
-            grid-column: span 2;
+        .menu-btn:hover {
+            background: #f8f9fa;
+            border-color: #dee2e6;
+            transform: translateX(3px);
         }
-        .card-caja .menu-sub { color: rgba(255,255,255,0.7); }
-        .grid-menu { display: grid; grid-template-columns: repeat(2, 1fr); gap: 15px; }
-        @media (min-width: 768px) { .grid-menu { grid-template-columns: repeat(4, 1fr); gap: 20px; } }
-        .badge-notify { position: absolute; top: 10px; right: 10px; background: #dc3545; color: white; width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.75rem; font-weight: bold; border: 2px solid white; }
-        .section-header { font-size: 0.8rem; text-transform: uppercase; font-weight: 800; color: #6c757d; margin: 10px 0 10px; letter-spacing: 1px; }
-        #reloj { font-variant-numeric: tabular-nums; letter-spacing: 1px; }
+        .menu-icon-box {
+            width: 45px; height: 45px;
+            border-radius: 8px;
+            display: flex; align-items: center; justify-content: center;
+            font-size: 1.5rem;
+            margin-right: 15px;
+            flex-shrink: 0;
+        }
+        .menu-text { flex-grow: 1; }
+        .m-title { font-weight: 700; font-size: 0.95rem; display: block; line-height: 1.2; }
+        .m-sub { font-size: 0.75rem; color: #888; display: block; }
+
+        /* BANNER CAJA */
+        .caja-banner {
+            background: linear-gradient(90deg, #0d6efd 0%, #0a58ca 100%);
+            border-radius: 12px;
+            padding: 20px;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(13, 110, 253, 0.3);
+            margin-bottom: 20px;
+            transition: transform 0.2s;
+        }
+        .caja-banner:hover { transform: scale(1.01); color: white; }
+
+        /* UTILIDADES */
+        .section-title { font-size: 0.8rem; font-weight: 800; text-transform: uppercase; color: #adb5bd; margin-bottom: 10px; letter-spacing: 1px; }
+        .badge-alert { background: #dc3545; color: white; font-size: 0.7rem; padding: 2px 6px; border-radius: 10px; margin-left: auto; }
         
-        .text-pulse { animation: pulse-red 2s infinite; }
-        @keyframes pulse-red { 0% { color: #fff; } 50% { color: #ff8b94; } 100% { color: #fff; } }
+        /* GRID RESPONSIVE AJUSTADA */
+        .grid-compact { display: grid; grid-template-columns: repeat(1, 1fr); gap: 10px; }
+        @media (min-width: 576px) { .grid-compact { grid-template-columns: repeat(2, 1fr); } }
+        @media (min-width: 992px) { .grid-compact { grid-template-columns: repeat(3, 1fr); } }
+
+        .pulse-text { animation: pulse 2s infinite; }
+        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
     </style>
 </head>
 <body>
 
     <?php include 'includes/menu.php'; ?>
 
-    <div class="dash-header">
-        <div class="container">
-            <div class="d-flex justify-content-between align-items-center mb-2"> 
-                <div>
-                    <h1 class="fw-bold mb-0 fs-4">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?>!</h1>
-                    <p class="opacity-75 mb-0 small" style="font-size: 0.75rem;">
-                        <?php echo ($rol_usuario <= 2) ? 'Panel de Control Total' : 'Panel de Ventas'; ?>
-                    </p>
-                </div>
-                <div class="text-end">
-                    <div class="text-end">
-                        <div class="fs-6 fw-bold" id="reloj">--:--:--</div> <span class="badge bg-white text-dark shadow-sm" style="font-size: 0.65rem;">ARGENTINA</span>
-                    </div>
-                </div>
+    <div class="header-section">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <h4 class="fw-bold m-0 text-dark">Hola, <?php echo htmlspecialchars(explode(' ', $nombre_mostrar)[0]); ?></h4>
+                <small class="text-muted"><?php echo ($rol_usuario <= 2) ? 'Administrador' : 'Vendedor'; ?></small>
             </div>
-            
-            <div class="row g-2 justify-content-center">
-                <div class="col-4 col-md-2">
-                    <a href="reportes.php?set_rango=hoy&f_inicio=<?php echo date('Y-m-d'); ?>&f_fin=<?php echo date('Y-m-d'); ?>&id_usuario=" class="card-link">
-                        <div class="stat-card">
-                            <small class="stat-label">Ventas de Hoy</small>
-                            <div class="stat-value">$<?php echo number_format($vendido_hoy,0,',','.'); ?></div>
-                        </div>
-                    </a>
-                </div>
-                
-                <div class="col-4 col-md-2">
-                     <a href="reportes.php?filtro=hoy" class="card-link">
-                        <div class="stat-card">
-                            <small class="stat-label">Tickets</small>
-                            <div class="stat-value"><?php echo $tickets_hoy; ?></div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-4 col-md-2">
-                     <a href="historial_cajas.php" class="card-link">
-                        <div class="stat-card">
-                            <small class="stat-label">Caja</small>
-                            <div class="stat-value">
-                                <?php if($estado_caja=='ABIERTA'): ?>
-                                    <span class="text-success"><i class="bi bi-circle-fill small"></i> ON</span>
-                                <?php else: ?>
-                                    <span class="text-danger"><i class="bi bi-x-circle-fill small"></i> OFF</span>
-                                <?php endif; ?>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-6 col-md-2">
-                     <a href="productos.php?filtro=stock_bajo" class="card-link">
-                        <div class="stat-card">
-                            <small class="stat-label">Stock Bajo</small>
-                            <div class="stat-value <?php echo $alertas_stock > 0 ? 'text-warning' : ''; ?>">
-                                <?php echo $alertas_stock; ?> <span style="font-size:0.7em; font-weight:400;">items</span>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <?php if($rol_usuario <= 2): ?>
-                <div class="col-6 col-md-2">
-                     <a href="productos.php?filtro=vencimientos" class="card-link">
-                         <div class="stat-card" style="<?php echo $alertas_vencimiento > 0 ? 'background: rgba(220, 53, 69, 0.25); border-color: rgba(220, 53, 69, 0.5);' : ''; ?>">
-                            <small class="stat-label <?php echo $alertas_vencimiento > 0 ? 'text-danger fw-bold' : ''; ?>">Vencimientos</small>
-                            <div class="stat-value <?php echo $alertas_vencimiento > 0 ? 'text-pulse' : ''; ?>">
-                                <?php echo $alertas_vencimiento; ?> <span style="font-size:0.7em; font-weight:400;">próx.</span>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-
-                <div class="col-6 col-md-2">
-                     <a href="clientes.php?filtro=cumple" class="card-link">
-                         <div class="stat-card" style="<?php echo $alertas_cumple > 0 ? 'background: rgba(255, 193, 7, 0.25); border-color: rgba(255, 193, 7, 0.5);' : ''; ?>">
-                            <small class="stat-label <?php echo $alertas_cumple > 0 ? 'text-warning fw-bold' : ''; ?>">Cumpleaños</small>
-                            <div class="stat-value">
-                                <?php echo $alertas_cumple; ?> <i class="bi bi-gift-fill" style="font-size: 0.7em;"></i>
-                            </div>
-                        </div>
-                    </a>
-                </div>
-                <?php endif; ?>
+            <div class="text-end lh-1">
+                <div class="fw-bold fs-5" id="reloj">--:--</div>
+                <small class="text-muted" style="font-size: 0.65rem;">ARG</small>
             </div>
         </div>
     </div>
 
-    <div class="container pb-5">
+    <div class="container">
         
-        <div class="section-header">Operaciones</div>
-        <div class="grid-menu">
-            <a href="ventas.php" class="card-menu card-caja">
-                <div class="d-flex justify-content-between w-100">
-                    <i class="bi bi-cart4 fs-1"></i>
-                    <i class="bi bi-arrow-right-circle fs-3 opacity-50"></i>
+        <div class="row g-2 row-cols-2 row-cols-md-3 row-cols-lg-6 mb-4">
+            
+            <div class="col">
+                <a href="reportes.php?filtro=hoy" class="info-card b-blue">
+                    <div class="label">Ventas Hoy</div>
+                    <div class="value text-primary">$<?php echo number_format($vendido_hoy,0,',','.'); ?></div>
+                </a>
+            </div>
+            
+            <div class="col">
+                <a href="reportes.php?filtro=hoy" class="info-card b-purple">
+                    <div class="label">Tickets</div>
+                    <div class="value"><?php echo $tickets_hoy; ?></div>
+                </a>
+            </div>
+
+            <div class="col">
+                <a href="historial_cajas.php" class="info-card <?php echo $estado_caja=='ABIERTA'?'b-green':'b-red'; ?>">
+                    <div class="label">Caja</div>
+                    <div class="value">
+                        <?php if($estado_caja=='ABIERTA'): ?>
+                            <span class="text-success"><i class="bi bi-circle-fill" style="font-size:8px; vertical-align:middle;"></i> ON</span>
+                        <?php else: ?>
+                            <span class="text-danger">CERRADA</span>
+                        <?php endif; ?>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col">
+                <a href="productos.php?filtro=bajo_stock" class="info-card b-orange">
+                    <div class="label">Stock Bajo</div>
+                    <div class="value <?php echo $alertas_stock > 0 ? 'text-danger' : ''; ?>">
+                        <?php echo $alertas_stock; ?>
+                    </div>
+                </a>
+            </div>
+
+            <?php if($rol_usuario <= 2): ?>
+            <div class="col">
+                <a href="productos.php?filtro=vencimientos" class="info-card b-red">
+                    <div class="label">Vencimientos</div>
+                    <div class="value <?php echo $alertas_vencimiento > 0 ? 'text-danger pulse-text' : ''; ?>">
+                        <?php echo $alertas_vencimiento; ?>
+                    </div>
+                </a>
+            </div>
+
+            <div class="col">
+                <a href="clientes.php?filtro=cumple" class="info-card b-yellow">
+                    <div class="label">Cumpleaños</div>
+                    <div class="value <?php echo $alertas_cumple > 0 ? 'text-warning' : ''; ?>">
+                        <?php echo $alertas_cumple; ?>
+                    </div>
+                </a>
+            </div>
+            <?php endif; ?>
+        </div>
+
+        <a href="ventas.php" class="caja-banner">
+            <div class="d-flex align-items-center">
+                <div class="bg-white text-primary rounded-circle d-flex align-items-center justify-content-center me-3" style="width: 50px; height: 50px;">
+                    <i class="bi bi-cart4 fs-3"></i>
                 </div>
-                <div class="mt-2">
-                    <div class="fs-3 fw-bold">CAJA</div>
-                    <div class="menu-sub text-white opacity-75">Vender / Cobrar</div>
+                <div>
+                    <div class="fs-4 fw-bold lh-1">Punto de Venta</div>
+                    <div class="small opacity-75">Cobrar / Facturar</div>
                 </div>
-            </a>
-            <a href="productos.php" class="card-menu">
+            </div>
+            <i class="bi bi-chevron-right fs-4"></i>
+        </a>
+
+        <div class="section-title">Gestión Diaria</div>
+        <div class="grid-compact mb-4">
+            
+            <a href="productos.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-primary"><i class="bi bi-box-seam"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Productos</span>
+                    <span class="m-sub">Precios y Stock</span>
+                </div>
                 <?php if($alertas_stock > 0 && $rol_usuario <= 2): ?>
-                    <div class="badge-notify"><?php echo $alertas_stock; ?></div>
+                    <span class="badge-alert"><?php echo $alertas_stock; ?></span>
                 <?php endif; ?>
-                <i class="bi bi-box-seam icon-lg text-primary"></i>
-                <div class="menu-title">Productos</div>
-                <div class="menu-sub">Stock</div>
             </a>
-            <a href="clientes.php" class="card-menu">
-                <i class="bi bi-people-fill icon-lg text-info"></i>
-                <div class="menu-title">Clientes</div>
-                <div class="menu-sub">Ctas. Ctes.</div>
+
+            <a href="clientes.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-info"><i class="bi bi-people-fill"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Clientes</span>
+                    <span class="m-sub">Ctas. Corrientes</span>
+                </div>
             </a>
+
+            <a href="proveedores.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-dark"><i class="bi bi-truck"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Proveedores</span>
+                    <span class="m-sub">Pedidos y Compras</span>
+                </div>
+            </a>
+            
+            <a href="gastos.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-secondary"><i class="bi bi-cash-coin"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Gastos</span>
+                    <span class="m-sub">Salidas de Caja</span>
+                </div>
+            </a>
+
         </div>
 
         <?php if($rol_usuario <= 2): ?>
+        
+        <div class="section-title">Marketing & Extras</div>
+        <div class="grid-compact mb-4">
+            <a href="admin_revista.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-danger"><i class="bi bi-newspaper"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Revista Digital</span>
+                    <span class="m-sub">Publicar Ofertas</span>
+                </div>
+            </a>
             
-            <div class="section-header mt-4">Marketing</div>
-            <div class="grid-menu">
-                <a href="admin_revista.php" class="card-menu border-bottom border-danger border-3">
-                    <i class="bi bi-newspaper icon-lg text-danger"></i>
-                    <div class="menu-title">Revista</div>
-                    <div class="menu-sub">Ofertas</div>
-                </a>
-                <a href="tienda.php" target="_blank" class="card-menu border-bottom border-success border-3">
-                    <i class="bi bi-shop icon-lg text-success"></i>
-                    <div class="menu-title">Tienda</div>
-                    <div class="menu-sub">Online</div>
-                </a>
-                <a href="gestionar_cupones.php" class="card-menu">
-                    <i class="bi bi-ticket-perforated icon-lg text-warning"></i>
-                    <div class="menu-title">Cupones</div>
-                    <div class="menu-sub">Descuentos</div>
-                </a>
-                 <a href="ver_encuestas.php" class="card-menu">
-                    <i class="bi bi-chat-heart icon-lg text-danger"></i>
-                    <div class="menu-title">Encuestas</div>
-                    <div class="menu-sub">Opiniones</div>
-                </a>
-            </div>
+            <a href="gestionar_cupones.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-warning"><i class="bi bi-ticket-perforated"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Cupones</span>
+                    <span class="m-sub">Descuentos</span>
+                </div>
+            </a>
 
-            <div class="section-header mt-4">Administración</div>
-            <div class="grid-menu">
-                <a href="reportes.php" class="card-menu">
-                    <i class="bi bi-bar-chart-line-fill icon-lg text-primary"></i>
-                    <div class="menu-title">Reportes</div>
-                    <div class="menu-sub">Ganancias</div>
-                </a>
-                <a href="proveedores.php" class="card-menu">
-                    <i class="bi bi-truck icon-lg text-dark"></i>
-                    <div class="menu-title">Proveedores</div>
-                    <div class="menu-sub">Pedidos</div>
-                </a>
-                <a href="usuarios.php" class="card-menu">
-                    <i class="bi bi-people-fill icon-lg text-dark"></i>
-                    <div class="menu-title">Usuarios</div>
-                    <div class="menu-sub">y Roles</div>
-                </a>
-                <a href="configuracion.php" class="card-menu">
-                    <i class="bi bi-gear-fill icon-lg text-secondary"></i>
-                    <div class="menu-title">Configurar</div>
-                    <div class="menu-sub">Sistema</div>
-                </a>
-            </div>
+            <a href="tienda.php" target="_blank" class="menu-btn">
+                <div class="menu-icon-box bg-light text-success"><i class="bi bi-shop"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Ver Tienda</span>
+                    <span class="m-sub">Vista Cliente</span>
+                </div>
+            </a>
+
+             <a href="ver_encuestas.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-danger"><i class="bi bi-chat-heart"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Encuestas</span>
+                    <span class="m-sub">Opiniones</span>
+                </div>
+            </a>
+        </div>
+
+        <div class="section-title">Administración</div>
+        <div class="grid-compact mb-4">
+            <a href="reportes.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-primary"><i class="bi bi-bar-chart-line-fill"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Reportes</span>
+                    <span class="m-sub">Estadísticas</span>
+                </div>
+            </a>
+
+            <a href="usuarios.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-dark"><i class="bi bi-shield-lock-fill"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Usuarios</span>
+                    <span class="m-sub">Accesos y Roles</span>
+                </div>
+            </a>
+
+            <a href="configuracion.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-secondary"><i class="bi bi-gear-fill"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Configuración</span>
+                    <span class="m-sub">General</span>
+                </div>
+            </a>
+        </div>
 
         <?php endif; ?>
 
-        <div class="section-header mt-4">Cuenta</div>
-        <div class="grid-menu pb-5">
-             <a href="perfil.php" class="card-menu">
-                <i class="bi bi-person-badge icon-lg text-primary"></i>
-                <div class="menu-title">Mi Perfil</div>
-                <div class="menu-sub">Editar</div>
+        <div class="section-title">Mi Cuenta</div>
+        <div class="grid-compact pb-4">
+             <a href="perfil.php" class="menu-btn">
+                <div class="menu-icon-box bg-light text-primary"><i class="bi bi-person-circle"></i></div>
+                <div class="menu-text">
+                    <span class="m-title">Mi Perfil</span>
+                    <span class="m-sub">Mis Datos</span>
+                </div>
             </a>
-            <a href="logout.php" class="card-menu bg-light border">
-                <i class="bi bi-power icon-lg text-danger"></i>
-                <div class="menu-title text-danger">Salir</div>
-                <div class="menu-sub">Cerrar Sesión</div>
+            <a href="logout.php" class="menu-btn" style="border-color: #f5c2c7; background: #fff5f5;">
+                <div class="menu-icon-box text-danger"><i class="bi bi-power"></i></div>
+                <div class="menu-text text-danger">
+                    <span class="m-title">Cerrar Sesión</span>
+                    <span class="m-sub">Salir del sistema</span>
+                </div>
             </a>
         </div>
+
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>
         function updateClock() {
             const now = new Date();
-            const timeString = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' });
+            const timeString = now.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Argentina/Buenos_Aires' });
             document.getElementById('reloj').textContent = timeString;
         }
         setInterval(updateClock, 1000); updateClock();

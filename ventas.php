@@ -428,18 +428,39 @@ try {
                         let html = ''; 
                         res.data.forEach(p => { 
                             let stock = parseFloat(p.stock_actual);
-                            let colorStock = stock <= (p.stock_minimo||5) ? 'text-danger fw-bold' : 'text-muted';
-                            let aviso = stock <= 0 ? '(AGOTADO)' : '';
-                            
-                            // CORRECCIÓN CRÍTICA DE COMILLAS:
-                            let etiquetaStock = '';
-                            if(p.tipo === 'combo') {
-                                if(stock > 0) etiquetaStock = '<span class="badge bg-success">OFERTA ACTIVA</span>';
-                                else etiquetaStock = '<span class="badge bg-danger">OFERTA VENCIDA</span>';
-                            } else {
-                                // Producto normal
-                                etiquetaStock = `<div class="small ${colorStock}" style="font-size:0.75rem;">Stock: ${stock}</div>`;
-                            }
+let colorStock = stock <= (p.stock_minimo||5) ? 'text-danger fw-bold' : 'text-muted';
+let aviso = (stock <= 0 && p.tipo !== 'combo') ? '(AGOTADO)' : '';
+
+let etiquetaStock = '';
+
+if(p.tipo === 'combo') {
+    if(p.es_ilimitado == 1) {
+        etiquetaStock = '<span class="badge bg-primary"><i class="bi bi-infinity"></i> ILIMITADO</span>';
+    } else if(p.fecha_inicio && p.fecha_fin) {
+        let dIni = new Date(p.fecha_inicio + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'});
+        let dFin = new Date(p.fecha_fin + 'T00:00:00').toLocaleDateString('es-AR', {day:'2-digit', month:'2-digit'});
+        etiquetaStock = `<span class="badge bg-info text-dark">${dIni} al ${dFin}</span>`;
+    } else {
+        etiquetaStock = '<span class="badge bg-success">OFERTA</span>';
+    }
+} else {
+    // [NUEVO] Si es producto normal y tiene precio oferta > 0
+    if(parseFloat(p.precio_oferta) > 0) {
+        etiquetaStock = `<span class="badge bg-danger me-1">OFERTA</span> <span class="small ${colorStock}">Stock: ${stock}</span>`;
+        // Tachamos visualmente el precio viejo en la siguiente línea
+    } else {
+        etiquetaStock = `<div class="small ${colorStock}" style="font-size:0.75rem;">Stock: ${stock}</div>`;
+    }
+}
+
+let precioMostrar = `$${p.precio_venta}`;
+// Si hay oferta, mostramos el precio nuevo
+if(parseFloat(p.precio_oferta) > 0) {
+    precioMostrar = `<s class="text-muted small me-1">$${p.precio_venta}</s> <span class="text-danger fw-bold">$${p.precio_oferta}</span>`;
+}
+
+                            // Escape de comillas para evitar errores
+                            let jsonProducto = JSON.stringify(p).replace(/'/g, "&#39;");
 
                             html += `
                             <div class="item-resultado d-flex justify-content-between align-items-center" onclick='seleccionarProducto(${jsonProducto})'>
@@ -447,7 +468,7 @@ try {
                                     <div class="fw-bold">${p.descripcion} <small class="text-danger">${aviso}</small></div>
                                     ${etiquetaStock}
                                 </div>
-                                <span class="badge bg-primary rounded-pill">$${p.precio_venta}</span>
+                                <span class="badge bg-light text-dark border">${precioMostrar}</span>
                             </div>`;
                         });
                         $('#lista-resultados').html(html).show();

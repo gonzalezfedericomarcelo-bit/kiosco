@@ -17,6 +17,17 @@ if(isset($_GET['toggle_id'])) {
 if (isset($_GET['borrar'])) {
     $id_borrar = $_GET['borrar'];
     
+    // [NUEVO] Paso previo: Verificar si es un combo para borrar también la regla de oferta
+    $stmtCheck = $conexion->prepare("SELECT codigo_barras, tipo FROM productos WHERE id = ?");
+    $stmtCheck->execute([$id_borrar]);
+    $prodData = $stmtCheck->fetch(PDO::FETCH_ASSOC);
+
+    if ($prodData && $prodData['tipo'] === 'combo') {
+        // Si es combo, borramos la regla de la tabla 'combos' usando el código
+        $conexion->prepare("DELETE FROM combos WHERE codigo_barras = ?")->execute([$prodData['codigo_barras']]);
+    }
+    // [FIN NUEVO]
+
     try {
         // Primero intentamos eliminarlo físicamente de la base de datos
         $stmt = $conexion->prepare("DELETE FROM productos WHERE id = ?");
@@ -38,8 +49,8 @@ if (isset($_GET['borrar'])) {
 // 3. OBTENER DATOS (Traemos TODO para filtrar con JS)
 $categorias = $conexion->query("SELECT * FROM categorias WHERE activo=1")->fetchAll();
 
-// Consulta principal
-$sql = "SELECT p.*, c.nombre as cat FROM productos p JOIN categorias c ON p.id_categoria=c.id ORDER BY p.id DESC";
+// Consulta principal (Agregamos datos de combos para mostrar badge correcto)
+$sql = "SELECT p.*, c.nombre as cat, cb.fecha_inicio, cb.fecha_fin, cb.es_ilimitado FROM productos p JOIN categorias c ON p.id_categoria=c.id LEFT JOIN combos cb ON p.codigo_barras = cb.codigo_barras ORDER BY p.id DESC";
 $productos = $conexion->query($sql)->fetchAll();
 ?>
 <!DOCTYPE html>
@@ -172,13 +183,15 @@ $productos = $conexion->query($sql)->fetchAll();
                 <span class="text-muted small">Administración Visual de Productos</span>
             </div>
             
-            <a href="combos.php" class="btn btn-warning text-dark rounded-pill px-4 py-2 fw-bold shadow-sm me-2">
-    <i class="bi bi-box-seam-fill me-1"></i> COMBOS
-</a>
+            <div>
+                <a href="combos.php" class="btn btn-warning text-dark rounded-pill px-4 py-2 fw-bold shadow-sm me-2">
+                    <i class="bi bi-box-seam-fill me-1"></i> COMBOS
+                </a>
 
-            <a href="producto_formulario.php" class="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm">
-                <i class="bi bi-plus-lg me-1"></i> NUEVO PRODUCTO
-            </a>
+                <a href="producto_formulario.php" class="btn btn-primary rounded-pill px-4 py-2 fw-bold shadow-sm">
+                    <i class="bi bi-plus-lg me-1"></i> NUEVO PRODUCTO
+                </a>
+            </div>
         </div>
 
         <div class="filter-bar sticky-top" style="top: 10px; z-index: 100;">
@@ -244,13 +257,24 @@ $productos = $conexion->query($sql)->fetchAll();
                 // Colores
                 $colorStock = 'bg-success';
                 $txtStock = 'text-success';
-                if($stock <= $min * 2) { $colorStock = 'bg-warning'; $txtStock = 'text-warning'; }
-                if($stock <= $min) { $colorStock = 'bg-danger'; $txtStock = 'text-danger'; }
+                
+                // SI ES COMBO: Lo pintamos de azul y barra llena (100%)
+                if($p->tipo === 'combo') {
+                    $colorStock = 'bg-primary'; 
+                    $txtStock = 'text-primary';
+                    $pct = 100; 
+                } else {
+                    // SI ES PRODUCTO NORMAL: Calculamos semáforo
+                    if($stock <= $min * 2) { $colorStock = 'bg-warning'; $txtStock = 'text-warning'; }
+                    if($stock <= $min) { $colorStock = 'bg-danger'; $txtStock = 'text-danger'; }
+                }
 
                 // Clases Estado
                 $claseCard = $p->activo ? '' : 'producto-inactivo';
                 $estadoData = $p->activo ? 'activos' : 'pausados';
-                if($stock <= $min) $estadoData .= ' bajo_stock'; // Concatenamos para que el filtro lo detecte
+                
+                // Solo marcamos "bajo_stock" si NO es un combo
+                if($stock <= $min && $p->tipo !== 'combo') $estadoData .= ' bajo_stock';
             ?>
             
             <div class="col-6 col-md-4 col-lg-3 item-grid" 
@@ -267,8 +291,19 @@ $productos = $conexion->query($sql)->fetchAll();
                     <div class="badge-overlay">
                         <?php if(!$p->activo): ?>
                             <span class="badge bg-dark"><i class="bi bi-pause-fill"></i> PAUSADO</span>
-                        <?php elseif($stock <= $min): ?>
-                            <span class="badge bg-danger shadow-sm"><i class="bi bi-exclamation-triangle-fill"></i> AGOTÁNDOSE</span>
+                        <?php elseif(!empty($p->precio_oferta) && $p->precio_oferta > 0): ?>
+                            <span class="badge bg-danger shadow-sm"><i class="bi bi-fire"></i> OFERTA</span>
+                        <?php elseif($stock <= $min && $p->tipo !== 'combo'): ?>
+                            <span class="badge bg-warning text-dark shadow-sm"><i class="bi bi-exclamation-triangle-fill"></i> AGOTÁNDOSE</span>
+                        <?php elseif($p->tipo === 'combo'): ?>
+                            <?php if($p->es_ilimitado == 1): ?>
+                                <span class="badge bg-primary shadow-sm"><i class="bi bi-infinity"></i> ILIMITADO</span>
+                            <?php else: ?>
+                                <span class="badge bg-info text-dark shadow-sm" style="font-size: 0.65rem;">
+                                    <i class="bi bi-calendar-event"></i> 
+                                    <?php echo date('d/m', strtotime($p->fecha_inicio)); ?> - <?php echo date('d/m', strtotime($p->fecha_fin)); ?>
+                                </span>
+                            <?php endif; ?>
                         <?php endif; ?>
                     </div>
 
@@ -290,7 +325,15 @@ $productos = $conexion->query($sql)->fetchAll();
                         <small class="text-muted font-monospace" style="font-size:0.75rem"><?php echo $p->codigo_barras; ?></small>
 
                         <div class="d-flex justify-content-between align-items-end mt-3">
-                            <div class="precio-tag">$<?php echo number_format($p->precio_venta, 0, ',', '.'); ?></div>
+                            <div>
+                                <?php if(!empty($p->precio_oferta) && $p->precio_oferta > 0): ?>
+                                    <div class="text-decoration-line-through text-muted small">$<?php echo number_format($p->precio_venta, 0, ',', '.'); ?></div>
+                                    <div class="precio-tag text-danger">$<?php echo number_format($p->precio_oferta, 0, ',', '.'); ?></div>
+                                <?php else: ?>
+                                    <div class="precio-tag">$<?php echo number_format($p->precio_venta, 0, ',', '.'); ?></div>
+                                <?php endif; ?>
+                            </div>
+                            
                             <div class="text-end" style="font-size:0.8rem">
                                 <span class="fw-bold <?php echo $txtStock; ?>"><?php echo $stock; ?> u.</span>
                             </div>
@@ -309,9 +352,12 @@ $productos = $conexion->query($sql)->fetchAll();
                         </div>
 
                         <div class="d-flex gap-2">
-                            <a href="producto_formulario.php?id=<?php echo $p->id; ?>" class="btn btn-sm btn-outline-secondary border-0" title="Editar">
-                                <i class="bi bi-pencil-fill"></i>
-                            </a>
+                            <?php if($p->tipo === 'combo'): ?>
+                                <a href="combos.php?msg=buscalo_en_lista" class="btn btn-sm btn-outline-warning" title="Editar Oferta (Ir a Combos)"><i class="bi bi-pencil-square"></i></a>
+                            <?php else: ?>
+                                <a href="producto_formulario.php?id=<?php echo $p->id; ?>" class="btn btn-sm btn-outline-secondary border-0" title="Editar Producto"><i class="bi bi-pencil-fill"></i></a>
+                            <?php endif; ?>
+                            
                             <a href="productos.php?borrar=<?php echo $p->id; ?>" class="btn btn-sm btn-outline-danger border-0" 
                                onclick="return confirm('¿Seguro quieres ocultar/archivar este producto?')" title="Eliminar">
                                 <i class="bi bi-trash3-fill"></i>

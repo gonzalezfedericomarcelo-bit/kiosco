@@ -1,20 +1,52 @@
 <?php
-// encuesta.php - FORMULARIO PÚBLICO (DISEÑO MEJORADO)
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+// encuesta.php - VERSIÓN FINAL DEFINITIVA (BOTÓN COMPARTIR ABAJO + AJUSTE DE ALTURA)
+session_start();
+error_reporting(0); 
 
-// 1. CONEXIÓN A PRUEBA DE FALLOS
+// 1. CONEXIÓN A BASE DE DATOS
 $rutas_db = ['db.php', 'includes/db.php'];
-$conectado = false;
-foreach ($rutas_db as $ruta) {
-    if (file_exists($ruta)) { require_once $ruta; $conectado = true; break; }
+foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; break; } }
+
+// 2. RECUPERAR DATOS EXACTOS
+$datos = [
+    'nombre' => '',
+    'direccion' => '',
+    'telefono' => '',
+    'logo' => ''
+];
+
+try {
+    $sql = "SELECT nombre_negocio, direccion_local, telefono_whatsapp, whatsapp_pedidos, logo_url FROM configuracion LIMIT 1"; 
+    $stmt = $conexion->query($sql);
+    
+    if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        $datos['nombre']    = $row['nombre_negocio'];
+        $datos['direccion'] = $row['direccion_local'];
+        $datos['logo']      = $row['logo_url'];
+        $datos['telefono']  = !empty($row['whatsapp_pedidos']) ? $row['whatsapp_pedidos'] : $row['telefono_whatsapp'];
+    }
+} catch (Exception $e) { }
+
+// 3. GENERAR LINK ABSOLUTO PARA WHATSAPP
+$protocol = isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on' ? "https" : "http";
+$host = $_SERVER['HTTP_HOST'];
+$path = rtrim(dirname($_SERVER['PHP_SELF']), '/\\');
+$baseUrl = "$protocol://$host$path";
+
+$ogImage = "";
+if (!empty($datos['logo'])) {
+    if (strpos($datos['logo'], 'http') === 0) {
+        $ogImage = $datos['logo'];
+    } else {
+        $ogImage = $baseUrl . '/' . $datos['logo'];
+    }
 }
 
-if (!$conectado) die("<div style='color:red; text-align:center; padding:20px;'>Error Crítico: No se encuentra db.php. Verifique la carpeta.</div>");
+$ogTitle = !empty($datos['nombre']) ? "Encuesta: " . $datos['nombre'] : "Encuesta de Satisfacción";
+$shareUrl = "$baseUrl/encuesta.php";
 
-$mensaje = '';
-$tipo_msg = '';
-
+// 4. LÓGICA DE GUARDADO
+$mensaje_sweet = '';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $nivel = $_POST['nivel'] ?? 0;
     $com = trim($_POST['comentario']);
@@ -24,94 +56,214 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     if($nivel > 0) {
         try {
             if(empty($nom)) $nom = 'Anónimo';
-            
             $sql = "INSERT INTO encuestas (nivel, comentario, cliente_nombre, contacto, fecha) VALUES (?, ?, ?, ?, NOW())";
             $stmt = $conexion->prepare($sql);
             $stmt->execute([$nivel, $com, $nom, $cont]);
-            
-            $mensaje = "¡Gracias! Tu opinión fue guardada.";
-            $tipo_msg = "success";
+            header("Location: encuesta.php?exito=1"); exit;
         } catch (Exception $e) {
-            $mensaje = "Error DB: " . $e->getMessage();
-            $tipo_msg = "danger";
+            $mensaje_sweet = "Swal.fire('Error', 'Problema al guardar.', 'error');";
         }
     } else {
-        $mensaje = "Por favor selecciona una carita.";
-        $tipo_msg = "warning";
+        $mensaje_sweet = "Swal.fire('Atención', 'Selecciona una carita.', 'warning');";
     }
 }
+
+// 5. MODO ADMIN
+$esAdmin = isset($_SESSION['usuario_id']);
+if ($esAdmin) {
+    try {
+        $totalEncuestas = $conexion->query("SELECT COUNT(*) FROM encuestas")->fetchColumn();
+        $promedio = number_format($conexion->query("SELECT AVG(nivel) FROM encuestas")->fetchColumn(), 1);
+        $stmt3 = $conexion->query("SELECT nivel FROM encuestas ORDER BY id DESC LIMIT 1");
+        $ultimaNota = $stmt3->fetchColumn() ?: '-';
+    } catch (Exception $e) { $totalEncuestas = 0; }
+}
 ?>
+
 <!DOCTYPE html>
 <html lang="es">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Encuesta de Satisfacción</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title><?php echo htmlspecialchars($ogTitle); ?></title>
+    
+    <meta property="og:title" content="<?php echo htmlspecialchars($ogTitle); ?>" />
+    <meta property="og:description" content="¡Tu opinión nos importa! Calificanos en segundos." />
+    <meta property="og:image" content="<?php echo $ogImage; ?>" />
+    <meta property="og:url" content="<?php echo $shareUrl; ?>" />
+    <meta property="og:type" content="website" />
+
+    <?php if(!$esAdmin): ?>
+        <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <?php endif; ?>
+
     <style>
-        body { background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); min-height: 100vh; display: flex; align-items: center; justify-content: center; font-family: 'Segoe UI', sans-serif; }
-        .card-encuesta { border: none; border-radius: 20px; box-shadow: 0 15px 35px rgba(0,0,0,0.1); width: 100%; max-width: 480px; overflow: hidden; background: white; }
-        .card-header { background: #fff; border-bottom: none; padding-top: 30px; text-align: center; }
-        .emoji-container { display: flex; justify-content: space-between; padding: 20px 10px; }
-        .emoji-label { font-size: 3rem; cursor: pointer; transition: 0.3s; opacity: 0.4; filter: grayscale(100%); }
-        .emoji-label:hover { transform: scale(1.2); opacity: 0.8; }
+        .main-wrapper { min-height: 100vh; display: flex; justify-content: center; align-items: center; padding: 20px; width: 100%; }
+        .card-custom { width: 100%; max-width: 550px; border-radius: 25px; box-shadow: 0 20px 50px rgba(0,0,0,0.3); border: none; background: white; }
+        
+        /* Emojis */
+        .emoji-container { display: flex; justify-content: space-between; padding: 20px 5px; background: #fff; border: 2px dashed #e9ecef; border-radius: 15px; margin-bottom: 25px; }
+        .emoji-option { text-align: center; cursor: pointer; transition: 0.2s; flex: 1; }
+        .emoji-option label { font-size: 3rem; cursor: pointer; transition: transform 0.2s; display: block; line-height: 1; }
+        .emoji-option span { display: block; font-size: 0.75rem; font-weight: bold; margin-top: 10px; color: #6c757d; text-transform: uppercase; letter-spacing: 1px; }
+        .emoji-option:hover label { transform: scale(1.2); }
         input[type="radio"] { display: none; }
-        input[type="radio"]:checked + label { opacity: 1; filter: grayscale(0%); transform: scale(1.3); }
-        .form-control { background-color: #f8f9fa; border: 1px solid #eee; border-radius: 10px; padding: 12px; }
-        .form-control:focus { background-color: #fff; box-shadow: 0 0 0 3px rgba(13,110,253,0.1); }
-        .btn-enviar { border-radius: 12px; padding: 12px; font-weight: bold; letter-spacing: 1px; font-size: 1.1rem; }
+        input[type="radio"]:checked + label { transform: scale(1.4); }
+        
+        #e1:checked ~ label { filter: drop-shadow(0 0 10px red); } #e1:checked ~ span { color: #dc3545; }
+        #e2:checked ~ label { filter: drop-shadow(0 0 5px orange); } #e2:checked ~ span { color: #fd7e14; }
+        #e3:checked ~ label { filter: drop-shadow(0 0 5px grey); } #e3:checked ~ span { color: #6c757d; }
+        #e4:checked ~ label { filter: drop-shadow(0 0 10px gold); } #e4:checked ~ span { color: #ffc107; }
+        #e5:checked ~ label { filter: drop-shadow(0 0 15px hotpink); } #e5:checked ~ span { color: #d63384; }
+
+        .form-control-lg { border-radius: 10px; font-size: 1rem; padding: 12px; }
+
+        /* Admin Styles */
+        .header-blue { background-color: #102A57; color: white; padding: 40px 0; margin-bottom: 30px; border-radius: 0 0 30px 30px; box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25); position: relative; overflow: hidden; }
+        .bg-icon-large { position: absolute; top: 50%; right: 20px; transform: translateY(-50%) rotate(-10deg); font-size: 10rem; opacity: 0.1; color: white; pointer-events: none; }
+        .stat-card { border: none; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); background: white; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+        .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+
+        <?php if(!$esAdmin): ?>
+            body { background: linear-gradient(135deg, #102A57 0%, #0d6efd 100%); font-family: 'Segoe UI', sans-serif; margin: 0; }
+        <?php endif; ?>
+
+        @keyframes strike { 0% { opacity: 0; transform: scale(0.5); } 10% { opacity: 1; transform: scale(1.1); } 15% { transform: scale(1); } 90% { opacity: 1; } 100% { opacity: 0; } }
+        .shake { animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both; }
+        @keyframes shake { 10%, 90% { transform: translate3d(-1px, 0, 0); } 20%, 80% { transform: translate3d(2px, 0, 0); } 30%, 50%, 70% { transform: translate3d(-4px, 0, 0); } 40%, 60% { transform: translate3d(4px, 0, 0); } }
+
+        @media (max-width: 576px) { .emoji-option label { font-size: 2rem; } .emoji-option span { font-size: 0.6rem; } }
     </style>
 </head>
 <body>
 
-    <div class="card-encuesta">
-        <?php if($tipo_msg == 'success'): ?>
-            <div class="p-5 text-center">
-                <div style="font-size: 5rem;">🎉</div>
-                <h2 class="fw-bold mt-3 text-dark">¡Recibido!</h2>
-                <p class="text-muted mb-4">Gracias por ayudarnos a mejorar.</p>
-                <a href="encuesta.php" class="btn btn-outline-primary rounded-pill px-4">Volver</a>
+    <?php if($esAdmin): ?>
+        <?php include 'includes/layout_header.php'; ?>
+        <div class="header-blue">
+            <i class="bi bi-chat-text-fill bg-icon-large"></i>
+            <div class="container position-relative">
+                <div class="d-flex justify-content-between align-items-center mb-4">
+                    <div><h2 class="fw-bold mb-0">Encuestas</h2><p class="opacity-75 mb-0">Panel de Control</p></div>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-4"><div class="stat-card"><div><h6 class="text-muted small fw-bold mb-1">Total</h6><h2 class="mb-0 fw-bold"><?php echo $totalEncuestas; ?></h2></div><div class="icon-box bg-primary bg-opacity-10 text-primary"><i class="bi bi-bar-chart-fill"></i></div></div></div>
+                    <div class="col-12 col-md-4"><div class="stat-card"><div><h6 class="text-muted small fw-bold mb-1">Promedio</h6><h2 class="mb-0 fw-bold text-warning"><?php echo $promedio; ?></h2></div><div class="icon-box bg-warning bg-opacity-10 text-warning"><i class="bi bi-star-half"></i></div></div></div>
+                    <div class="col-12 col-md-4"><div class="stat-card"><div><h6 class="text-muted small fw-bold mb-1">Última</h6><h2 class="mb-0 fw-bold text-success"><?php echo $ultimaNota; ?> / 5</h2></div><div class="icon-box bg-success bg-opacity-10 text-success"><i class="bi bi-check-circle"></i></div></div></div>
+                </div>
             </div>
-        <?php else: ?>
-            <div class="card-header">
-                <h3 class="fw-bold text-dark">¿Cómo te atendimos?</h3>
-                <p class="text-muted small">Selecciona una opción</p>
+        </div>
+    <?php endif; ?>
+
+    <div class="main-wrapper">
+        <div class="card card-custom">
+            <div class="card-header bg-white pt-4 pb-3 border-0 text-center position-relative">
+                
+                <div class="mb-3">
+                    <?php if(!empty($datos['logo']) && file_exists($datos['logo'])): ?>
+                        <img src="<?php echo $datos['logo']; ?>" alt="Logo" class="rounded-circle shadow-sm" style="width: 150px; height: 150px; object-fit: cover; border: 4px solid #f8f9fa;">
+                    <?php else: ?>
+                        <div class="rounded-circle bg-primary bg-opacity-10 d-inline-flex align-items-center justify-content-center text-primary" style="width: 150px; height: 150px;">
+                            <i class="bi bi-shop h1 m-0" style="font-size: 4rem;"></i>
+                        </div>
+                    <?php endif; ?>
+                </div>
+                
+                <h2 class="fw-bold text-dark m-0 mb-3"><?php echo !empty($datos['nombre']) ? strtoupper($datos['nombre']) : 'TU NEGOCIO'; ?></h2>
+                
+                <div class="d-flex flex-column align-items-center gap-2 mb-2">
+                    <?php if(!empty($datos['direccion'])): ?>
+                        <a href="https://www.google.com/maps/search/?api=1&query=<?php echo urlencode($datos['direccion']); ?>" target="_blank" class="text-decoration-none badge bg-light text-dark border p-2 px-3 shadow-sm">
+                            <i class="bi bi-geo-alt-fill text-danger me-1"></i> <?php echo $datos['direccion']; ?>
+                        </a>
+                    <?php endif; ?>
+                    
+                    <?php if(!empty($datos['telefono'])): ?>
+                        <?php $waLimpio = preg_replace('/[^0-9]/', '', $datos['telefono']); ?>
+                        <a href="https://wa.me/<?php echo $waLimpio; ?>" target="_blank" class="text-decoration-none badge bg-success text-white border border-success p-2 px-3 shadow-sm">
+                            <i class="bi bi-whatsapp me-1"></i> <?php echo $datos['telefono']; ?>
+                        </a>
+                    <?php endif; ?>
+                </div>
+
+                <hr class="mx-5 my-4 opacity-25">
+                <p class="fw-bold text-primary mb-0 fs-5">¿Cómo te atendimos hoy?</p>
             </div>
             
-            <div class="card-body p-4">
-                <?php if($mensaje): ?>
-                    <div class="alert alert-<?php echo $tipo_msg; ?> text-center mb-4 border-0 shadow-sm"><?php echo $mensaje; ?></div>
-                <?php endif; ?>
-
+            <div class="card-body p-4 p-md-5 pt-0">
                 <form method="POST">
-                    <div class="emoji-container mb-3">
-                        <div><input type="radio" name="nivel" value="1" id="e1"><label for="e1" class="emoji-label">😡</label></div>
-                        <div><input type="radio" name="nivel" value="2" id="e2"><label for="e2" class="emoji-label">☹️</label></div>
-                        <div><input type="radio" name="nivel" value="3" id="e3"><label for="e3" class="emoji-label">😐</label></div>
-                        <div><input type="radio" name="nivel" value="4" id="e4"><label for="e4" class="emoji-label">🙂</label></div>
-                        <div><input type="radio" name="nivel" value="5" id="e5"><label for="e5" class="emoji-label">😍</label></div>
+                    <div class="emoji-container">
+                        <div class="emoji-option" onclick="efecto(1)"><input type="radio" name="nivel" value="1" id="e1"><label for="e1">😡</label><span>Mala</span></div>
+                        <div class="emoji-option" onclick="efecto(2)"><input type="radio" name="nivel" value="2" id="e2"><label for="e2">☹️</label><span>Regular</span></div>
+                        <div class="emoji-option" onclick="efecto(3)"><input type="radio" name="nivel" value="3" id="e3"><label for="e3">😐</label><span>Normal</span></div>
+                        <div class="emoji-option" onclick="efecto(4)"><input type="radio" name="nivel" value="4" id="e4"><label for="e4">🙂</label><span>Buena</span></div>
+                        <div class="emoji-option" onclick="efecto(5)"><input type="radio" name="nivel" value="5" id="e5"><label for="e5">😍</label><span>Excelente</span></div>
                     </div>
 
-                    <div class="mb-3">
-                        <textarea name="comentario" class="form-control" rows="3" placeholder="¿Algún comentario? (Opcional)"></textarea>
+                    <div class="mb-4">
+                        <textarea name="comentario" class="form-control form-control-lg bg-light" rows="3" placeholder="¿Querés contarnos algo más?"></textarea>
                     </div>
 
-                    <div class="row g-2 mb-4">
-                        <div class="col-6">
-                            <input type="text" name="nombre" class="form-control" placeholder="Tu Nombre">
-                        </div>
-                        <div class="col-6">
-                            <input type="text" name="contacto" class="form-control" placeholder="WhatsApp">
-                        </div>
+                    <div class="row g-3 mb-4">
+                        <div class="col-6"><div class="input-group"><span class="input-group-text bg-white border-end-0"><i class="bi bi-person"></i></span><input type="text" name="nombre" class="form-control form-control-lg bg-light border-start-0" placeholder="Tu Nombre"></div></div>
+                        <div class="col-6"><div class="input-group"><span class="input-group-text bg-white border-end-0"><i class="bi bi-whatsapp"></i></span><input type="text" name="contacto" class="form-control form-control-lg bg-light border-start-0" placeholder="WhatsApp (Opcional)"></div></div>
                     </div>
 
-                    <div class="d-grid">
-                        <button type="submit" class="btn btn-primary btn-enviar">ENVIAR OPINIÓN</button>
+                    <div class="d-grid mb-4">
+                        <button type="submit" class="btn btn-dark btn-lg py-3 fw-bold shadow-lg" style="border: none;">
+                            ENVIAR OPINIÓN <i class="bi bi-send-fill ms-2"></i>
+                        </button>
+                    </div>
+
+                    <div class="text-center border-top pt-4">
+                        <small class="text-muted d-block mb-2">¿Te gusta nuestro servicio?</small>
+                        <button type="button" onclick="compartirEncuesta()" class="btn btn-outline-primary rounded-pill px-4 fw-bold shadow-sm">
+                            <i class="bi bi-share-fill me-2"></i> COMPARTIR CON AMIGOS
+                        </button>
                     </div>
                 </form>
             </div>
-        <?php endif; ?>
+        </div>
     </div>
 
+    <?php if($esAdmin): ?>
+        <?php include 'includes/layout_footer.php'; ?>
+    <?php endif; ?>
+
+    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.2/dist/confetti.browser.min.js"></script>
+
+    <script>
+        <?php echo $mensaje_sweet; ?>
+        if(new URLSearchParams(window.location.search).get('exito')==='1') { Swal.fire({ title: '¡Muchas Gracias!', text: 'Tu opinión nos ayuda a mejorar día a día.', icon: 'success', confirmButtonColor: '#102A57' }).then(() => { window.history.replaceState({}, document.title, window.location.pathname); }); }
+
+        function efecto(nivel) {
+            if(nivel == 1) {
+                var tiempoDuracion = 3000;
+                const contenedor = document.createElement('div');
+                contenedor.style.position = 'fixed'; contenedor.style.top = '0'; contenedor.style.left = '0';
+                contenedor.style.width = '100%'; contenedor.style.height = '100vh';
+                contenedor.style.zIndex = '99999'; contenedor.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                contenedor.style.display = 'flex'; contenedor.style.justifyContent = 'center'; contenedor.style.alignItems = 'center';
+                contenedor.style.pointerEvents = 'none'; contenedor.style.animation = `strike ${tiempoDuracion}ms ease-out forwards`;
+                const img = document.createElement('img');
+                img.src = 'img/norris.gif'; img.style.maxWidth = '90%'; img.style.maxHeight = '80vh'; img.style.width = 'auto'; img.style.height = 'auto';
+                img.style.border = '5px solid #000000'; img.style.boxShadow = '0 0 40px #000000'; img.style.borderRadius = '10px';
+                contenedor.appendChild(img); document.body.appendChild(contenedor); document.body.classList.add('shake');
+                setTimeout(() => { contenedor.remove(); document.body.classList.remove('shake'); }, tiempoDuracion); 
+            }
+            if(nivel == 2) { var end = Date.now() + 1000; (function frame() { confetti({ particleCount: 5, angle: 90, spread: 90, origin: { x: Math.random(), y: -0.1 }, colors: ['#87CEEB', '#4682B4', '#00008B'], shapes: ['circle'], gravity: 4, startVelocity: 40, scalar: 0.8, ticks: 300 }); if (Date.now() < end) requestAnimationFrame(frame); }()); }
+            if(nivel == 3) { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#0d6efd', '#0dcaf0'] }); }
+            if(nivel == 4) { confetti({ particleCount: 60, spread: 80, origin: { y: 0.6 }, shapes: ['star'], colors: ['#FFD700', '#FFA500'] }); }
+            if(nivel == 5) { var duration = 2000; var animationEnd = Date.now() + duration; var defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 0 }; var interval = setInterval(function() { var timeLeft = animationEnd - Date.now(); if (timeLeft <= 0) return clearInterval(interval); var particleCount = 50 * (timeLeft / duration); confetti({ ...defaults, particleCount, origin: { x: Math.random(), y: Math.random() - 0.2 }, shapes: ['heart'], colors: ['#FF0000', '#D63384', '#FF69B4'], scalar: 2 }); }, 250); }
+        }
+
+        function compartirEncuesta() {
+            var nombreNegocio = "<?php echo htmlspecialchars($datos['nombre']); ?>";
+            const url = window.location.href; 
+            if (navigator.share) { navigator.share({ title: 'Encuesta: ' + nombreNegocio, text: '¡Danos tu opinión sobre ' + nombreNegocio + '!', url: url }); } 
+            else { navigator.clipboard.writeText(url).then(() => { Swal.fire({ icon: 'success', title: 'Link Copiado', text: 'Compartilo en WhatsApp', timer: 1500, showConfirmButton: false }); }); }
+        }
+    </script>
 </body>
 </html>

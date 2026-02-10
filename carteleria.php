@@ -20,69 +20,55 @@ if($busqueda) $where .= " AND (descripcion LIKE '%$busqueda%' OR codigo_barras L
 // Forzamos FETCH_OBJ para asegurar compatibilidad
 $productos = $conexion->query("SELECT * FROM productos WHERE $where ORDER BY descripcion ASC LIMIT 50")->fetchAll(PDO::FETCH_OBJ);
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<?php include 'includes/layout_header.php'; ?>
+
+<style>
+    /* Estilos específicos para impresión y etiquetas */
+    @media print {
+        /* Ocultar elementos del layout nuevo al imprimir */
+        .header-section, nav, .navbar, .no-print, footer { display: none !important; }
+        .etiqueta { border: 2px solid #000 !important; break-inside: avoid; page-break-inside: avoid; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    }
+
+    /* Estilo Base de la Etiqueta */
+    .etiqueta {
+        border: 2px solid #000; 
+        padding: 15px; 
+        margin-bottom: 20px;
+        text-align: center; 
+        background: #fff; 
+        border-radius: 8px;
+        position: relative; 
+        overflow: hidden;   
+        z-index: 1;
+    }
+
+    /* ESTILO MARCA DE AGUA (LOGO) */
+    .marca-agua-img {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%) rotate(-20deg); 
+        width: 80%;       
+        opacity: 0.15;    
+        z-index: -1;      
+        pointer-events: none; 
+        filter: grayscale(100%); 
+    }
+
+    .etiqueta-contenido {
+        position: relative;
+        z-index: 2;
+    }
+
+    .precio-grande { font-size: 3rem; font-weight: 900; line-height: 1; color: #000; }
+    /* Ajuste responsivo para el precio en celulares muy chicos */
+    @media (max-width: 400px) { .precio-grande { font-size: 2.5rem; } }
     
-    <title>Cartelería - KioscoManager</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <style>
-        @media print {
-            .no-print { display: none !important; }
-            .etiqueta { border: 2px solid #000 !important; break-inside: avoid; page-break-inside: avoid; }
-            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-
-        /* Estilo Base de la Etiqueta */
-        .etiqueta {
-            border: 2px solid #000; 
-            padding: 15px; 
-            margin-bottom: 20px;
-            text-align: center; 
-            background: #fff; 
-            border-radius: 8px;
-            position: relative; 
-            overflow: hidden;   
-            z-index: 1;
-        }
-
-        /* ESTILO MARCA DE AGUA (LOGO) */
-        .marca-agua-img {
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%) rotate(-20deg); 
-            width: 80%;       
-            opacity: 0.15;    
-            z-index: -1;      
-            pointer-events: none; 
-            filter: grayscale(100%); 
-        }
-
-        .etiqueta-contenido {
-            position: relative;
-            z-index: 2;
-        }
-
-        .precio-grande { font-size: 3rem; font-weight: 900; line-height: 1; color: #000; }
-        /* Ajuste responsivo para el precio en celulares muy chicos */
-        @media (max-width: 400px) { .precio-grande { font-size: 2.5rem; } }
-        
-        .nombre-prod { font-size: 1.2rem; font-weight: bold; height: 3em; overflow: hidden; text-transform: uppercase; }
-        .codigo { font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; background: rgba(255,255,255,0.8); padding: 2px; border-radius: 4px; display: inline-block; }
-    </style>
-</head>
-<body class="bg-light">
-
-    <div class="no-print">
-        <?php 
-        if(file_exists('menu.php')) include 'menu.php'; 
-        elseif(file_exists('includes/menu.php')) include 'includes/menu.php';
-        ?>
-    </div>
+    .nombre-prod { font-size: 1.2rem; font-weight: bold; height: 3em; overflow: hidden; text-transform: uppercase; }
+    .codigo { font-family: monospace; font-size: 0.9rem; letter-spacing: 2px; background: rgba(255,255,255,0.8); padding: 2px; border-radius: 4px; display: inline-block; }
+</style>
 
     <div class="container mt-4">
         <div class="card shadow-sm mb-4 no-print border-0">
@@ -129,6 +115,4 @@ $productos = $conexion->query("SELECT * FROM productos WHERE $where ORDER BY des
         <?php endif; ?>
     </div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+    <?php include 'includes/layout_footer.php'; ?>

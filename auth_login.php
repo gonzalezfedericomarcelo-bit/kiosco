@@ -1,5 +1,5 @@
 <?php
-// auth_login.php - CON CARGA DE PERMISOS
+// auth_login.php - CON CARGA DE PERMISOS Y REDIRECCIÓN QR
 session_start();
 require_once 'includes/db.php';
 
@@ -22,7 +22,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $_SESSION['usuario'] = $user->usuario;
         $_SESSION['rol'] = $user->id_rol;
 
-        // --- NUEVO: CARGAR PERMISOS DEL ROL ---
+        // --- CARGAR PERMISOS DEL ROL ---
         $stmtPermisos = $conexion->prepare("
             SELECT p.clave 
             FROM permisos p 
@@ -30,7 +30,6 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             WHERE rp.id_rol = ?
         ");
         $stmtPermisos->execute([$user->id_rol]);
-        // Guardamos un array simple: ['ver_caja', 'ver_reportes', etc]
         $_SESSION['permisos'] = $stmtPermisos->fetchAll(PDO::FETCH_COLUMN);
         // --------------------------------------
 
@@ -40,8 +39,17 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $conexion->prepare("INSERT INTO asistencia (id_usuario, ingreso) VALUES (?, NOW())")->execute([$user->id]);
         } catch (Exception $e) {}
 
-        header("Location: dashboard.php");
+        // --- CAMBIO CLAVE: REDIRECCIÓN INTELIGENTE ---
+        // Si el Index nos mandó un 'redirect' (ej: reporte_gastos.php), vamos ahí.
+        // Si no, vamos al dashboard normal.
+        if (!empty($_POST['redirect'])) {
+            header("Location: " . $_POST['redirect']);
+        } else {
+            header("Location: dashboard.php");
+        }
         exit;
+        // ---------------------------------------------
+
     } else {
         header("Location: index.php?error=incorrecto");
         exit;

@@ -1,5 +1,5 @@
 <?php
-// devoluciones.php - FINAL (Mensajes JS Seguros)
+// devoluciones.php - FINAL (Banner Azul Estandarizado)
 session_start();
 error_reporting(0); 
 
@@ -109,169 +109,246 @@ if ($id_ticket_buscado > 0) {
     }
 }
 
-$ultimas = $conexion->query("SELECT v.id, v.total, v.fecha, c.nombre, (SELECT COUNT(*) FROM devoluciones d WHERE d.id_venta_original = v.id) as tiene_dev FROM ventas v LEFT JOIN clientes c ON v.id_cliente = c.id ORDER BY v.id DESC LIMIT 15")->fetchAll(PDO::FETCH_ASSOC);
+// --- ESTADÍSTICAS ÚTILES ---
+$totalDevs = $conexion->query("SELECT COUNT(*) FROM devoluciones")->fetchColumn();
+$devsHoy = $conexion->query("SELECT COUNT(*) FROM devoluciones WHERE DATE(fecha) = CURDATE()")->fetchColumn();
+$plataHoy = $conexion->query("SELECT COALESCE(SUM(monto_devuelto),0) FROM devoluciones WHERE DATE(fecha) = CURDATE()")->fetchColumn();
+
+// --- LISTADO FILTRABLE ---
+if(isset($_GET['filtro']) && $_GET['filtro'] == 'hoy') {
+    // Si filtran por HOY: mostramos solo las ventas que tuvieron devolución hoy
+    $sql = "SELECT v.id, v.total, v.fecha, c.nombre, 1 as tiene_dev 
+            FROM ventas v 
+            JOIN devoluciones d ON v.id = d.id_venta_original 
+            LEFT JOIN clientes c ON v.id_cliente = c.id 
+            WHERE DATE(d.fecha) = CURDATE() 
+            GROUP BY v.id ORDER BY d.fecha DESC";
+} else {
+    // Normal: Últimas 15 ventas generales
+    $sql = "SELECT v.id, v.total, v.fecha, c.nombre, (SELECT COUNT(*) FROM devoluciones d WHERE d.id_venta_original = v.id) as tiene_dev FROM ventas v LEFT JOIN clientes c ON v.id_cliente = c.id ORDER BY v.id DESC LIMIT 15";
+}
+$ultimas = $conexion->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Devoluciones</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <style>
-        .row-devuelto { background-color: #ffe6e6 !important; color: #dc3545; }
-        .row-devuelto td { color: #dc3545; text-decoration: line-through; }
-        .badge-dev { font-size: 0.7rem; }
-    </style>
-</head>
-<body class="bg-light">
+<?php include 'includes/layout_header.php'; ?>
 
-    <?php 
-    if(file_exists('includes/menu.php')) include 'includes/menu.php'; 
-    elseif(file_exists('menu.php')) include 'menu.php';
-    ?>
+<style>
+    /* Estilos Banner Azul (Fuera del container) */
+    .header-blue {
+        background-color: #102A57;
+        color: white;
+        padding: 40px 0;
+        margin-bottom: 30px;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25);
+        position: relative;
+        overflow: hidden;
+    }
+    .bg-icon-large {
+        position: absolute; top: 50%; right: 20px;
+        transform: translateY(-50%) rotate(-10deg);
+        font-size: 10rem; opacity: 0.1; color: white; pointer-events: none;
+    }
+    .stat-card {
+        border: none; border-radius: 15px; padding: 15px 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: transform 0.2s;
+        background: white; height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .stat-card:hover { transform: translateY(-3px); }
+    .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
 
-    <div class="container pb-5 mt-4">
-        <h3 class="mb-4 fw-bold text-secondary"><i class="bi bi-arrow-counterclockwise"></i> Gestión de Devoluciones</h3>
+    /* Estilos Tabla Devoluciones */
+    .row-devuelto { background-color: #ffe6e6 !important; color: #dc3545; }
+    .row-devuelto td { color: #dc3545; text-decoration: line-through; }
+    .badge-dev { font-size: 0.7rem; }
+</style>
 
-        <div class="row">
-            <div class="col-md-4">
-                <div class="card shadow-sm mb-3 border-0">
-                    <div class="card-header bg-dark text-white fw-bold">Buscar Ticket</div>
-                    <div class="card-body">
-                        <form method="GET" class="d-flex gap-2">
-                            <input type="number" name="id_ticket" class="form-control" placeholder="N° Ticket" required value="<?php echo htmlspecialchars($id_ticket_buscado); ?>">
-                            <button class="btn btn-primary fw-bold">Buscar</button>
-                        </form>
+<div class="header-blue">
+    <i class="bi bi-arrow-counterclockwise bg-icon-large"></i>
+    <div class="container position-relative">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold mb-0">Gestión de Devoluciones</h2>
+                <p class="opacity-75 mb-0">Control de reintegros y stock</p>
+            </div>
+        </div>
+
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="window.location.href='devoluciones.php'" style="cursor: pointer;">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Total Histórico</h6>
+                        <h2 class="mb-0 fw-bold text-dark"><?php echo $totalDevs; ?></h2>
+                    </div>
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary">
+                        <i class="bi bi-clock-history"></i>
                     </div>
                 </div>
-
-                <div class="card shadow-sm border-0">
-                    <div class="card-header bg-white fw-bold border-bottom">Últimos Tickets</div>
-                    <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
-                        <?php foreach($ultimas as $u): ?>
-                            <a href="devoluciones.php?id_ticket=<?php echo $u['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
-                                <div>
-                                    <span class="fw-bold text-primary">#<?php echo $u['id']; ?></span>
-                                    <small class="d-block text-muted" style="font-size:0.75rem"><?php echo substr($u['nombre'] ?? 'Consumidor Final', 0, 15); ?></small>
-                                </div>
-                                <div class="text-end">
-                                    <span class="fw-bold text-dark">$<?php echo number_format($u['total'], 0); ?></span>
-                                    <small class="d-block text-muted" style="font-size:0.75rem"><?php echo date('d/m H:i', strtotime($u['fecha'])); ?></small>
-                                    <?php if($u['tiene_dev'] > 0): ?>
-                                        <span class="badge bg-warning text-dark badge-dev d-block mt-1">⚠️ Con Devolución</span>
-                                    <?php endif; ?>
-                                </div>
-                            </a>
-                        <?php endforeach; ?>
+            </div>
+            
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="window.location.href='devoluciones.php?filtro=hoy'" style="cursor: pointer;">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Devoluciones Hoy</h6>
+                        <h2 class="mb-0 fw-bold <?php echo ($devsHoy > 0) ? 'text-danger' : 'text-dark'; ?>">
+                            <?php echo $devsHoy; ?>
+                        </h2>
+                    </div>
+                    <div class="icon-box bg-danger bg-opacity-10 text-danger">
+                        <i class="bi bi-arrow-return-left"></i>
                     </div>
                 </div>
             </div>
 
-            <div class="col-md-8">
-                <?php if($venta): ?>
-                    <div class="card shadow border-0">
-                        <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
-                            <span class="fw-bold fs-5">Ticket #<?php echo $venta['id']; ?></span>
-                            <span class="badge bg-white text-primary"><?php echo date('d/m/Y H:i', strtotime($venta['fecha'])); ?></span>
-                        </div>
-                        <div class="card-body">
-                            <div class="alert alert-light border d-flex justify-content-between align-items-center">
-                                <div>
-                                    <strong>Cliente:</strong> <?php echo $venta['cliente'] ?? 'Consumidor Final'; ?><br>
-                                    <small class="text-muted">Pago: <?php echo $venta['metodo_pago']; ?></small>
-                                </div>
-                                <span class="badge bg-success">Completada</span>
-                            </div>
-                            
-                            <div class="table-responsive">
-                                <table class="table table-hover align-middle">
-                                    <thead class="table-light">
-                                        <tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Acción</th></tr>
-                                    </thead>
-                                    <tbody>
-                                        <?php foreach($items as $i): 
-                                            $ya_devuelto = in_array($i['id_producto'], $productos_devueltos);
-                                            $clase_row = $ya_devuelto ? 'row-devuelto' : '';
-                                        ?>
-                                        <tr class="<?php echo $clase_row; ?>">
-                                            <td><?php echo $i['descripcion']; ?><?php if($ya_devuelto): ?><span class="badge bg-danger ms-2">DEVUELTO</span><?php endif; ?></td>
-                                            <td class="text-center fw-bold"><?php echo floatval($i['cantidad']); ?></td>
-                                            <td class="text-end">$<?php echo number_format($i['precio_historico'] ?? $i['precio_unitario'] ?? 0, 2); ?></td>
-                                            <td class="text-end fw-bold">$<?php echo number_format($i['subtotal'], 2); ?></td>
-                                            <td class="text-center">
-                                                <?php if($ya_devuelto): ?>
-                                                    <button class="btn btn-secondary btn-sm fw-bold" disabled><i class="bi bi-x-circle"></i> Ya Devuelto</button>
-                                                <?php else: ?>
-                                                    <form method="POST" class="form-devolucion">
-                                                        <input type="hidden" name="devolver" value="1">
-                                                        <input type="hidden" name="id_venta" value="<?php echo $venta['id']; ?>">
-                                                        <input type="hidden" name="id_producto" value="<?php echo $i['id_producto']; ?>">
-                                                        <input type="hidden" name="cantidad" value="<?php echo $i['cantidad']; ?>">
-                                                        <input type="hidden" name="monto" value="<?php echo $i['subtotal']; ?>">
-                                                        <button type="button" class="btn btn-outline-danger btn-sm fw-bold btn-confirmar-dev"><i class="bi bi-arrow-return-left"></i> Devolver</button>
-                                                    </form>
-                                                <?php endif; ?>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="window.location.href='devoluciones.php?filtro=hoy'" style="cursor: pointer;">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Dinero Devuelto (Hoy)</h6>
+                        <h2 class="mb-0 fw-bold text-dark">$<?php echo number_format($plataHoy, 0, ',', '.'); ?></h2>
                     </div>
-                <?php else: ?>
-                    <div class="alert alert-secondary text-center py-5 border-0">
-                        <i class="bi bi-receipt display-1 opacity-25"></i>
-                        <h4 class="mt-3 text-muted fw-light">Selecciona un ticket para ver detalles</h4>
+                    <div class="icon-box bg-warning bg-opacity-10 text-warning">
+                        <i class="bi bi-currency-dollar"></i>
                     </div>
-                <?php endif; ?>
+                </div>
             </div>
         </div>
     </div>
+</div>
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    
-    <script>
-        <?php if(isset($_GET['msg'])): ?>
-            // Usamos json_encode para asegurar que el texto sea seguro para JS
+<div class="container pb-5 mt-4">
+
+    <div class="row">
+        <div class="col-md-4">
+            <div class="card shadow-sm mb-3 border-0">
+                <div class="card-header bg-dark text-white fw-bold">Buscar Ticket</div>
+                <div class="card-body">
+                    <form method="GET" class="d-flex gap-2">
+                        <input type="number" name="id_ticket" class="form-control" placeholder="N° Ticket" required value="<?php echo htmlspecialchars($id_ticket_buscado); ?>">
+                        <button class="btn btn-primary fw-bold">Buscar</button>
+                    </form>
+                </div>
+            </div>
+
+            <div class="card shadow-sm border-0">
+                <div class="card-header bg-white fw-bold border-bottom">Últimos Tickets</div>
+                <div class="list-group list-group-flush" style="max-height: 400px; overflow-y: auto;">
+                    <?php foreach($ultimas as $u): ?>
+                        <a href="devoluciones.php?id_ticket=<?php echo $u['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="fw-bold text-primary">#<?php echo $u['id']; ?></span>
+                                <small class="d-block text-muted" style="font-size:0.75rem"><?php echo substr($u['nombre'] ?? 'Consumidor Final', 0, 15); ?></small>
+                            </div>
+                            <div class="text-end">
+                                <span class="fw-bold text-dark">$<?php echo number_format($u['total'], 0); ?></span>
+                                <small class="d-block text-muted" style="font-size:0.75rem"><?php echo date('d/m H:i', strtotime($u['fecha'])); ?></small>
+                                <?php if($u['tiene_dev'] > 0): ?>
+                                    <span class="badge bg-warning text-dark badge-dev d-block mt-1">⚠️ Con Devolución</span>
+                                <?php endif; ?>
+                            </div>
+                        </a>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-md-8">
+            <?php if($venta): ?>
+                <div class="card shadow border-0">
+                    <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                        <span class="fw-bold fs-5">Ticket #<?php echo $venta['id']; ?></span>
+                        <span class="badge bg-white text-primary"><?php echo date('d/m/Y H:i', strtotime($venta['fecha'])); ?></span>
+                    </div>
+                    <div class="card-body">
+                        <div class="alert alert-light border d-flex justify-content-between align-items-center">
+                            <div>
+                                <strong>Cliente:</strong> <?php echo $venta['cliente'] ?? 'Consumidor Final'; ?><br>
+                                <small class="text-muted">Pago: <?php echo $venta['metodo_pago']; ?></small>
+                            </div>
+                            <span class="badge bg-success">Completada</span>
+                        </div>
+                        
+                        <div class="table-responsive">
+                            <table class="table table-hover align-middle">
+                                <thead class="table-light">
+                                    <tr><th>Producto</th><th>Cant.</th><th>Precio</th><th>Subtotal</th><th>Acción</th></tr>
+                                </thead>
+                                <tbody>
+                                    <?php foreach($items as $i): 
+                                        $ya_devuelto = in_array($i['id_producto'], $productos_devueltos);
+                                        $clase_row = $ya_devuelto ? 'row-devuelto' : '';
+                                    ?>
+                                    <tr class="<?php echo $clase_row; ?>">
+                                        <td><?php echo $i['descripcion']; ?><?php if($ya_devuelto): ?><span class="badge bg-danger ms-2">DEVUELTO</span><?php endif; ?></td>
+                                        <td class="text-center fw-bold"><?php echo floatval($i['cantidad']); ?></td>
+                                        <td class="text-end">$<?php echo number_format($i['precio_historico'] ?? $i['precio_unitario'] ?? 0, 2); ?></td>
+                                        <td class="text-end fw-bold">$<?php echo number_format($i['subtotal'], 2); ?></td>
+                                        <td class="text-center">
+                                            <?php if($ya_devuelto): ?>
+                                                <button class="btn btn-secondary btn-sm fw-bold" disabled><i class="bi bi-x-circle"></i> Ya Devuelto</button>
+                                            <?php else: ?>
+                                                <form method="POST" class="form-devolucion">
+                                                    <input type="hidden" name="devolver" value="1">
+                                                    <input type="hidden" name="id_venta" value="<?php echo $venta['id']; ?>">
+                                                    <input type="hidden" name="id_producto" value="<?php echo $i['id_producto']; ?>">
+                                                    <input type="hidden" name="cantidad" value="<?php echo $i['cantidad']; ?>">
+                                                    <input type="hidden" name="monto" value="<?php echo $i['subtotal']; ?>">
+                                                    <button type="button" class="btn btn-outline-danger btn-sm fw-bold btn-confirmar-dev"><i class="bi bi-arrow-return-left"></i> Devolver</button>
+                                                </form>
+                                            <?php endif; ?>
+                                        </td>
+                                    </tr>
+                                    <?php endforeach; ?>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            <?php else: ?>
+                <div class="alert alert-secondary text-center py-5 border-0">
+                    <i class="bi bi-receipt display-1 opacity-25"></i>
+                    <h4 class="mt-3 text-muted fw-light">Selecciona un ticket para ver detalles</h4>
+                </div>
+            <?php endif; ?>
+        </div>
+    </div>
+</div>
+
+<script>
+    <?php if(isset($_GET['msg'])): ?>
+        // Usamos json_encode para asegurar que el texto sea seguro para JS
+        Swal.fire({
+            title: 'Operación Finalizada',
+            text: <?php echo json_encode(urldecode($_GET['msg'])); ?>,
+            icon: "<?php echo $_GET['tipo'] ?? 'info'; ?>",
+            confirmButtonColor: '#0d6efd',
+            confirmButtonText: 'Entendido'
+        }).then(() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete('msg');
+            url.searchParams.delete('tipo');
+            window.history.replaceState({}, document.title, url);
+        });
+    <?php endif; ?>
+
+    document.querySelectorAll('.btn-confirmar-dev').forEach(btn => {
+        btn.addEventListener('click', function() {
+            let form = this.closest('form');
             Swal.fire({
-                title: 'Operación Finalizada',
-                text: <?php echo json_encode(urldecode($_GET['msg'])); ?>,
-                icon: "<?php echo $_GET['tipo'] ?? 'info'; ?>",
-                confirmButtonColor: '#0d6efd',
-                confirmButtonText: 'Entendido'
-            }).then(() => {
-                const url = new URL(window.location.href);
-                url.searchParams.delete('msg');
-                url.searchParams.delete('tipo');
-                window.history.replaceState({}, document.title, url);
-            });
-        <?php endif; ?>
-
-        document.querySelectorAll('.btn-confirmar-dev').forEach(btn => {
-            btn.addEventListener('click', function() {
-                let form = this.closest('form');
-                Swal.fire({
-                    title: '¿Confirmar Devolución?',
-                    html: "Se devolverá el stock y se descontará el dinero.<br><b>Esta acción no se puede deshacer.</b>",
-                    icon: 'warning',
-                    showCancelButton: true,
-                    confirmButtonColor: '#dc3545',
-                    cancelButtonColor: '#6c757d',
-                    confirmButtonText: 'Sí, registrar devolución',
-                    cancelButtonText: 'Cancelar'
-                }).then((result) => {
-                    if (result.isConfirmed) {
-                        this.disabled = true;
-                        this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
-                        form.submit();
-                    }
-                });
+                title: '¿Confirmar Devolución?',
+                html: "Se devolverá el stock y se descontará el dinero.<br><b>Esta acción no se puede deshacer.</b>",
+                icon: 'warning',
+                showCancelButton: true,
+                confirmButtonColor: '#dc3545',
+                cancelButtonColor: '#6c757d',
+                confirmButtonText: 'Sí, registrar devolución',
+                cancelButtonText: 'Cancelar'
+            }).then((result) => {
+                if (result.isConfirmed) {
+                    this.disabled = true;
+                    this.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Procesando...';
+                    form.submit();
+                }
             });
         });
-    </script>
-</body>
-</html>
+    });
+</script>
+<?php include 'includes/layout_footer.php'; ?>

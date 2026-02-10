@@ -1,14 +1,21 @@
 <?php
-// index.php - LOGIN DUEÑO (DISEÑO GLASSMORPHISM AZUL/VIOLETA)
+// index.php - LOGIN CORREGIDO (SIN REDIRECCIÓN AUTOMÁTICA)
 session_start();
-require_once 'includes/db.php'; // Agregado para leer el nombre
+require_once 'includes/db.php';
+
+// Si ya está logueado, ahí sí lo sacamos (al dashboard o al redirect)
+if (isset($_SESSION['usuario_id'])) {
+    if (!empty($_GET['redirect'])) {
+        header("Location: " . $_GET['redirect']);
+    } else {
+        header("Location: dashboard.php");
+    }
+    exit;
+}
 
 // 1. OBTENER NOMBRE DEL NEGOCIO
 $conf = $conexion->query("SELECT nombre_negocio FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 $nombre_negocio = $conf['nombre_negocio'] ?? 'Kiosco Manager';
-
-// Si ya está logueado
-if (isset($_SESSION['usuario_id'])) { header("Location: dashboard.php"); exit; }
 
 $error = '';
 if (isset($_GET['error'])) {
@@ -29,7 +36,6 @@ if (isset($_GET['error'])) {
     <style>
         body {
             font-family: 'Poppins', sans-serif;
-            /* PALETA AZUL/VIOLETA QUE TE GUSTÓ */
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             height: 100vh;
             display: flex;
@@ -59,7 +65,7 @@ if (isset($_GET['error'])) {
             box-shadow: 0 0 0 4px rgba(255,255,255,0.3);
         }
         .btn-glass {
-            background: #ffde00; /* AMARILLO ACENTO */
+            background: #ffde00;
             color: #333;
             font-weight: 800;
             border: none;
@@ -100,6 +106,7 @@ if (isset($_GET['error'])) {
         <form method="POST" action="auth_login.php">
             <div class="form-floating mb-3">
                 <input type="text" class="form-control" id="usuario" name="usuario" placeholder="Usuario" required autofocus>
+                <input type="hidden" name="redirect" value="<?php echo htmlspecialchars($_GET['redirect'] ?? ''); ?>">
                 <label for="usuario"><i class="bi bi-person-fill me-2"></i>Usuario</label>
             </div>
             

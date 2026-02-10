@@ -33,14 +33,32 @@ $smart_data = [
     <title>Revista Ofertas</title>
     
     <link href="https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;700;900&family=Bebas+Neue&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     
     <style>
-        :root { --yaguar-yellow: #ffc400; --yaguar-red: #d50000; --a4-w: 210mm; --a4-h: 296mm; }
-        body { background-color: #e9ecef; font-family: 'Roboto Condensed', sans-serif; height: 100vh; overflow: hidden; user-select: none; }
-        #app-container { display: flex; height: 100vh; }
+        /* Línea 61: Cambiá 296 por 297 */
+        :root { --yaguar-yellow: #ffc400; --yaguar-red: #d50000; --a4-w: 210mm; --a4-h: 296.7mm; }
+        /* PASO 2: AJUSTE DE ALTURAS */
+        body { 
+    background-color: #e9ecef; 
+    font-family: 'Roboto Condensed', sans-serif; 
+    height: 100vh; 
+    overflow: hidden; 
+    user-select: none; 
+    margin: 0;
+    display: flex; /* Agregamos esto */
+    flex-direction: column; /* Agregamos esto */
+}
+
+       /* 3. Buscá '#app-container' y reemplazalo por esto */
+#app-container { 
+    display: flex; 
+    height: calc(100vh - 56px); /* El 56px es la altura del header */
+    position: relative;
+    margin-top: 0; 
+}
         
         /* SIDEBAR */
         #sidebar { width: 340px; background: white; border-right: 1px solid #ccc; display: flex; flex-direction: column; z-index: 2000; }
@@ -53,7 +71,17 @@ $smart_data = [
 
         /* WORKSPACE */
         #workspace-container { flex-grow: 1; display: flex; flex-direction: column; background-color: #525659; position: relative; }
-        #toolbar-top { height: 50px; background: #343a40; color: white; display: flex; align-items: center; justify-content: space-between; padding: 0 20px; z-index: 1000; }
+        #toolbar-top { 
+    height: 50px; 
+    background: #343a40; 
+    color: white; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 0 20px; 
+    margin-top: 0; /* CAMBIADO DE 20px A 0 */
+    z-index: 1001;
+}
         #canvas-scroll { flex-grow: 1; overflow: auto; display: flex; justify-content: center; padding: 50px; background-image: radial-gradient(#666 1px, transparent 1px); background-size: 20px 20px; }
 
         /* PAGINA A4 */
@@ -61,7 +89,7 @@ $smart_data = [
         .page-header-ui { background: #fff; color: #333; padding: 5px 10px; font-size: 12px; display: flex; justify-content: space-between; width: var(--a4-w); margin: 0 auto; border: 1px solid #ccc; border-bottom: none; font-weight: bold; border-top-left-radius: 4px; border-top-right-radius: 4px; }
         .page { width: var(--a4-w); min-height: var(--a4-h); background: white; position: relative; overflow: visible; box-shadow: 0 5px 15px rgba(0,0,0,0.5); transform-origin: top center; margin: 0 auto; }
         
-        .page::after { content: "--- FIN RECOMENDADO A4 ---"; position: absolute; top: var(--a4-h); left: 0; width: 100%; border-bottom: 2px dashed red; color: red; font-size: 10px; text-align: right; pointer-events: none; z-index: 100; opacity: 0.6; }
+        .page::after { content: "--- FIN RECOMENDADO A4 ---"; position: absolute; top: var(--a4-h); left: 0; width: 100%; border-bottom: 2px dashed red; color: red; font-size: 10px; text-align: right; pointer-events: none; z-index: 100; opacity: 0.6; box-sizing: border-box;}
 
         /* SELECCIONES */
         .page.active-page { outline: 4px solid var(--yaguar-yellow); box-shadow: 0 0 20px rgba(255, 196, 0, 0.6); z-index: 10; }
@@ -126,26 +154,96 @@ $smart_data = [
         body.generating-pdf .sec-col { border: none !important; background: transparent !important; }
         body.generating-pdf .float-item { border: none !important; }
 
-        /* --- IMPRESIÓN (CTRL+P) CORREGIDA: ESTO QUITA LA BASURA --- */
-        @media print {
-            /* ESTA REGLA MÁGICA QUITA ENCABEZADOS Y PIES DE PÁGINA DEL NAVEGADOR */
-            @page { margin: 0; size: A4; }
-            
-            body { background: white; margin: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; height: auto; overflow: visible; }
-            #sidebar, #toolbar-top, #context-menu, .no-print, .sec-tools, .header-bg-tools, .row-resizer, .resize-handle, .btn-del-prod, .page-header-ui { display: none !important; }
-            
-            #app-container { display: block !important; height: auto !important; overflow: visible !important; }
-            #workspace-container { display: block !important; width: 100% !important; height: auto !important; margin: 0 !important; padding: 0 !important; background: white !important; overflow: visible !important; }
-            #canvas-scroll { padding: 0 !important; margin: 0 !important; overflow: visible !important; }
-            
-            .page-wrapper { margin: 0 !important; padding: 0 !important; height: auto !important; page-break-after: always; }
-            .page { width: 210mm !important; height: 296mm !important; margin: 0 !important; box-shadow: none !important; border: none !important; transform: none !important; }
-            .page::after { display: none !important; } 
-            .section-row, .sec-col, .float-item { border: none !important; }
-        }
-    </style>
+   
+
+
+/* El sidebar original tiene 2000, bajalo a 1500 */
+#sidebar { 
+    width: 340px; 
+    background: white; 
+    border-right: 1px solid #ccc; 
+    display: flex; 
+    flex-direction: column; 
+    z-index: 1050; /* Un poco más bajo que el menú desplegable */
+    height: 100%;
+}
+
+      
+/* --- ESTO REEMPLAZA TODO EL LÍO DE ABAJO --- */
+.navbar-container {
+    height: 56px;
+    position: relative;
+    z-index: 3000;
+}
+
+#toolbar-top { 
+    height: 50px; 
+    background: #343a40; 
+    color: white; 
+    display: flex; 
+    align-items: center; 
+    justify-content: space-between; 
+    padding: 0 20px; 
+    z-index: 1001;
+}
+
+@media print {
+    .page-header-ui, .page::after, .no-print, .navbar-container, .sec-tools, .row-resizer { 
+        display: none !important; 
+    }
+    @page { margin: 0 !important; size: A4; }
+    body { margin: 0 !important; padding: 0 !important; height: auto !important; overflow: visible !important; }
+    .page { 
+        width: 210mm !important; 
+        height: 297mm !important; 
+        padding: 0 !important; /* ACÁ ESTABA EL ERROR: AHORA ES CERO */
+        margin: 0 !important;
+        box-shadow: none !important;
+        transform: none !important;
+    }
+}
+/* --- REGLA DEFINITIVA PARA QUE EL PDF SALGA LIMPIO Y EN UNA HOJA --- */
+.pdf-clean .page-header-ui { 
+    display: none !important; /* ESTO BORRA EL TÍTULO 'HOJA A4' Y EL BOTÓN 'ELIMINAR' */
+}
+
+.pdf-clean #canvas-scroll { 
+    display: block !important; 
+    padding: 0 !important; 
+    margin: 0 !important; 
+    background: white !important; 
+}
+
+.pdf-clean .page-wrapper { 
+    margin: 0 !important; 
+    padding: 0 !important; 
+    border: none !important;
+    height: 296.7mm !important;
+}
+
+.pdf-clean .page { 
+    transform: none !important; 
+    margin: 0 !important; 
+    width: 210mm !important; 
+    height: 296.7mm !important; 
+    box-shadow: none !important; 
+    border: none !important; 
+    position: relative !important; 
+    left: 0 !important; 
+    top: 0 !important;
+    display: block !important; /* Asegura que la hoja SEA VISIBLE */
+    overflow: hidden !important; 
+}
+</style>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+
 </head>
 <body>
+<div class="no-print">
+    <div class="navbar-container no-print">
+    <?php include 'includes/layout_header.php'; ?>
+</div>
+</div>
 
 <div id="context-menu">
     <div class="ctx-header">ACCIONES</div>
@@ -230,7 +328,10 @@ $smart_data = [
         </div>
         
         <div class="p-3 border-top d-grid gap-2">
-               <button onclick="window.print()" class="btn btn-outline-secondary w-100 fw-bold"><i class="bi bi-printer"></i> IMPRIMIR</button>
+               
+               <button onclick="descargarRevistaPDF()" class="btn btn-success w-100 fw-bold mt-2">
+    <i class="bi bi-file-earmark-pdf"></i> DESCARGAR PDF DIRECTO
+</button>
         </div>
     </div>
 
@@ -249,7 +350,6 @@ $smart_data = [
     </div>
 </div>
 
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     const SMART = <?php echo json_encode($smart_data); ?>;
     let currentZoom = 0.7; 
@@ -311,14 +411,19 @@ $smart_data = [
         document.body.appendChild(clone);
         document.body.classList.add('generating-pdf'); // Ocultar lo original
 
-        // 4. Config html2pdf
         const opt = {
-            margin: 0,
-            filename: 'Ofertas_Kiosco.pdf',
-            image: { type: 'jpeg', quality: 0.98 },
-            html2canvas: { scale: 2, useCORS: true, scrollY: 0 },
-            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-        };
+        margin: 0,
+        filename: 'Revista_Ofertas.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+            scale: 2, 
+            useCORS: true, 
+            letterRendering: true,
+            scrollY: 0,
+            scrollX: 0
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
 
         // 5. Generar con pequeña pausa para renderizado
         setTimeout(() => {
@@ -442,66 +547,52 @@ $smart_data = [
 
     // --- FUNCIONES DE CONSTRUCCION ---
     function addPreset(type) {
-        const p = getTargetPage();
-        const div = document.createElement('div'); div.className = 'section-row';
-        div.style.height = '130px'; 
-        if(type==='header') div.style.marginBottom = '5px'; else div.style.marginTop = '5px';
-        
-        const bgColor = (type==='header'?'#ffc400':'#f1f1f1');
-        const borderB = (type==='header'?'5px solid #d50000':'none');
-        let footerBar = (type === 'footer') ? '<div style="position:absolute; top:0; left:0; width:100%; height:4px; background:#d50000; z-index:1;"></div>' : '';
-        
-        div.innerHTML = `
-            ${footerBar}
-            <div class="sec-bg" style="background:${bgColor}; border-bottom:${borderB}; width:100%; height:100%; position:absolute; top:0; left:0; z-index:0;"></div>
-            <div class="sec-tools no-print">
-                <button class="btn-sec" onclick="moveRow(this, -1)" title="Subir">▲</button>
-                <button class="btn-sec" onclick="moveRow(this, 1)" title="Bajar">▼</button>
-                <button class="btn-sec del" onclick="this.closest('.section-row').remove()" title="Borrar">X</button>
-            </div>
-            <div class="header-bg-tools no-print">
-                <input type="color" onchange="this.closest('.section-row').querySelector('.sec-bg').style.background=this.value;">
-                <button class="btn-sec" onclick="this.nextElementSibling.click()"><i class="bi bi-image"></i></button><input type="file" style="display:none" accept="image/*" onchange="setBg(this)">
-            </div>`;
-        div.style.position = 'relative';
-
-        if(type === 'header') {
-            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 15, 15, 'img', '100px');
-            createFloat(div, `<div style="font-size:38px; font-weight:900; color:#d50000; text-shadow:2px 2px 0 white;">${SMART.nombre}</div>`, 130, 25, 'text');
-            createFloat(div, `<div style="font-size:18px; font-weight:bold; background:white; padding:2px 10px;">OFERTAS IMPERDIBLES</div>`, 130, 75, 'text');
-        } else if(type === 'footer') {
-            createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;" onerror="this.style.display='none'">`, 20, 20, 'img', '90px');
-            createFloat(div, `<div style="font-size:16px; font-weight:900; color:#333; text-transform:uppercase;">CONTACTANOS</div>`, 130, 20, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:#555; font-size:12px;"><i class="bi bi-geo-alt-fill text-danger"></i> ${SMART.direccion}</div>`, 130, 45, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:green; font-size:12px;"><i class="bi bi-whatsapp"></i> ${SMART.whatsapp}</div>`, 130, 65, 'text');
-            createFloat(div, `<div style="font-weight:bold; color:#0d6efd; font-size:12px; margin-top:2px;"><i class="bi bi-cart4"></i> Tienda Online:<br><span style="color:#333; font-weight:normal;">${SMART.url_tienda}</span></div>`, 130, 85, 'text');
-            createFloat(div, `<div style="background:#d50000; color:white; font-weight:900; font-size:12px; padding:6px 10px; text-align:center; transform:rotate(-3deg); box-shadow: 2px 2px 0px #333; border-radius:4px; line-height:1.2;">¡ESCANEÁ Y<br>SUMÁ PUNTOS! <i class="bi bi-arrow-right"></i></div>`, 530, 45, 'sticker');
-            createFloat(div, `<img src="${SMART.qr_img}" style="width:100%; height:100%;">`, 650, 20, 'qr', '90px');
-        }
-        initRowResize(div); p.appendChild(div); div.scrollIntoView({behavior:'smooth'});
+    const p = getTargetPage();
+    const div = document.createElement('div'); div.className = 'section-row';
+    div.style.height = (type === 'footer') ? '132px' : '110px';div.style.height = (type === 'footer') ? '132px' : '110px';
+    if(type==='header') div.style.marginBottom = '5px'; else div.style.marginTop = '0';
+    const bgColor = (type==='header'?'#ffc400':'#f1f1f1');
+    const borderB = (type==='header'?'5px solid #d50000':'none');
+    let footerBar = (type === 'footer') ? '<div style="position:absolute; top:0; left:0; width:100%; height:4px; background:#d50000; z-index:1;"></div>' : '';
+    div.innerHTML = `${footerBar}<div class="sec-bg" style="background:${bgColor}; border-bottom:${borderB}; width:100%; height:100%; position:absolute; top:0; left:0; z-index:0;"></div><div class="sec-tools no-print"><button class="btn-sec" onclick="moveRow(this, -1)">▲</button><button class="btn-sec" onclick="moveRow(this, 1)">▼</button><button class="btn-sec del" onclick="this.closest('.section-row').remove()">X</button></div>`;
+    div.style.position = 'relative';
+    if(type === 'header') {
+        createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;">`, 15, 5, 'img', '90px');
+        createFloat(div, `<div style="font-size:32px; font-weight:900; color:#d50000;">${SMART.nombre}</div>`, 130, 5, 'text');
+        createFloat(div, `<div style="font-size:16px; font-weight:bold; background:white; padding:2px 10px;">OFERTAS IMPERDIBLES</div>`, 130, 50, 'text');
+    } else if(type === 'footer') {
+        createFloat(div, `<img src="${SMART.logo}" style="width:100%;height:100%;object-fit:contain;">`, 20, 25, 'img', '80px');
+        createFloat(div, `<div style="font-size:14px; font-weight:900; color:#333;">CONTACTANOS</div>`, 130, 35, 'text');
+        createFloat(div, `<div style="font-weight:bold; color:#555; font-size:11px;"><i class="bi bi-geo-alt-fill text-danger"></i> ${SMART.direccion}</div>`, 130, 56, 'text');
+        createFloat(div, `<div style="font-weight:bold; color:green; font-size:11px;"><i class="bi bi-whatsapp"></i> ${SMART.whatsapp}</div>`, 132, 75 , 'text');
+        createFloat(div, `<div style="background:#d50000; color:white; font-weight:900; font-size:11px; padding:4px 8px; transform:rotate(-3deg);">¡ESCANEÁ Y GANÁ!</div>`, 530,54, 'sticker');
+        createFloat(div, `<img src="${SMART.qr_img}" style="width:100%; height:100%;">`, 650, 24, 'qr', '80px');
     }
+    initRowResize(div); p.appendChild(div);
+}
 
     function addSection(type, cols) {
-        if(type === 'grid') {
-            const p = getTargetPage();
-            const div = document.createElement('div'); div.className = 'section-row';
-            div.style.height = '210px'; 
-            div.innerHTML = `
-            <div class="sec-tools no-print">
-                <button class="btn-sec" onclick="moveRow(this, -1)" title="Subir">▲</button>
-                <button class="btn-sec" onclick="moveRow(this, 1)" title="Bajar">▼</button>
-                <button class="btn-sec del" onclick="this.closest('.section-row').remove()" title="Borrar">X</button>
-            </div>`;
-            const grid = document.createElement('div'); grid.className = 'sec-grid';
-            for(let i=0; i<cols; i++) {
-                const col = document.createElement('div'); col.className = 'sec-col'; col.style.width = (100/cols)+'%';
-                col.setAttribute('onclick', 'setActiveCol(this, event)'); 
-                col.ondrop = (ev) => dropProd(ev, col); col.ondragover = (ev) => ev.preventDefault();
-                grid.appendChild(col);
-            }
-            div.appendChild(grid); initRowResize(div); p.appendChild(div); div.scrollIntoView({behavior:'smooth'});
+    if(type === 'grid') {
+        const p = getTargetPage();
+        const div = document.createElement('div'); div.className = 'section-row';
+        // ALTURA FIJA PARA FILAS DE PRODUCTOS
+        div.style.height = '220px'; 
+        div.innerHTML = `
+        <div class="sec-tools no-print">
+            <button class="btn-sec" onclick="moveRow(this, -1)" title="Subir">▲</button>
+            <button class="btn-sec" onclick="moveRow(this, 1)" title="Bajar">▼</button>
+            <button class="btn-sec del" onclick="this.closest('.section-row').remove()" title="Borrar">X</button>
+        </div>`;
+        const grid = document.createElement('div'); grid.className = 'sec-grid';
+        for(let i=0; i<cols; i++) {
+            const col = document.createElement('div'); col.className = 'sec-col'; col.style.width = (100/cols)+'%';
+            col.setAttribute('onclick', 'setActiveCol(this, event)'); 
+            col.ondrop = (ev) => dropProd(ev, col); col.ondragover = (ev) => ev.preventDefault();
+            grid.appendChild(col);
         }
+        div.appendChild(grid); initRowResize(div); p.appendChild(div); div.scrollIntoView({behavior:'smooth'});
     }
+}
 
     function createFloat(parent, html, x, y, type='text', width='auto') {
         const el = document.createElement('div'); el.className = 'float-item';
@@ -615,6 +706,30 @@ $smart_data = [
     document.addEventListener('click', function(e) {
         if (!e.target.closest('#context-menu')) ctxMenu.style.display = 'none';
     });
+    
+    function descargarRevistaPDF() {
+    window.scrollTo(0, 0);
+    document.getElementById('canvas-scroll').scrollTo(0, 0);
+    document.body.classList.add('pdf-clean');
+    const element = document.getElementById('pages-container');
+    const opt = {
+        margin: 0,
+        filename: 'Revista_Ofertas.pdf',
+        image: { type: 'jpeg', quality: 0.98 },
+        html2canvas: { 
+            scale: 2, 
+            useCORS: true,
+            scrollY: 0,
+            scrollX: 0,
+            width: 794 // Ancho exacto A4 en píxeles
+        },
+        jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+    };
+    html2pdf().set(opt).from(element).save().then(() => {
+        document.body.classList.remove('pdf-clean');
+    });
+}
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

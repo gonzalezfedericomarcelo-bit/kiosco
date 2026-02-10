@@ -1,8 +1,7 @@
 <?php
-// clientes.php - VERSIÓN BLINDADA PARA MÓVIL
+// clientes.php - VERSIÓN FINAL CORREGIDA (Sin conflicto de menú)
 session_start();
-ini_set('display_errors', 1);
-error_reporting(E_ALL);
+error_reporting(0); // Ocultamos errores en pantalla para no romper JSON
 
 // 1. CONEXIÓN
 if (file_exists('db.php')) require_once 'db.php';
@@ -14,16 +13,23 @@ if (!isset($_SESSION['usuario_id'])) {
     header("Location: index.php"); exit;
 }
 
-// 3. LÓGICA: GUARDAR / EDITAR / BORRAR
+// 3. LÓGICA PHP
 if (isset($_GET['borrar'])) {
+    $id_borrar = $_GET['borrar'];
     try {
-        $check = $conexion->prepare("SELECT COUNT(*) FROM movimientos_cc WHERE id_cliente = ?");
-        $check->execute([$_GET['borrar']]);
-        if($check->fetchColumn() > 0){
-             header("Location: clientes.php?error=tiene_movimientos"); exit;
+        $checkCC = $conexion->prepare("SELECT COUNT(*) FROM movimientos_cc WHERE id_cliente = ?");
+        $checkCC->execute([$id_borrar]);
+        
+        $checkVentas = $conexion->prepare("SELECT COUNT(*) FROM ventas WHERE id_cliente = ?");
+        $checkVentas->execute([$id_borrar]);
+
+        if ($checkCC->fetchColumn() > 0 || $checkVentas->fetchColumn() > 0) {
+             header("Location: clientes.php?error=tiene_datos"); exit;
         }
-        $conexion->prepare("DELETE FROM clientes WHERE id = ?")->execute([$_GET['borrar']]);
+
+        $conexion->prepare("DELETE FROM clientes WHERE id = ?")->execute([$id_borrar]);
         header("Location: clientes.php?msg=eliminado"); exit;
+
     } catch (Exception $e) { 
         header("Location: clientes.php?error=db"); exit; 
     }
@@ -48,363 +54,413 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     }
 }
 
-// 4. CONSULTA INTELIGENTE
+// 4. CONSULTA
 $sql = "SELECT c.*, 
         (SELECT COALESCE(SUM(monto),0) FROM movimientos_cc WHERE id_cliente = c.id AND tipo = 'debe') - 
         (SELECT COALESCE(SUM(monto),0) FROM movimientos_cc WHERE id_cliente = c.id AND tipo = 'haber') as saldo_calculado,
-        (SELECT MAX(fecha) FROM ventas WHERE id_cliente = c.id) as ultima_venta_fecha,
-        (SELECT COUNT(*) FROM ventas WHERE id_cliente = c.id) as total_compras_cant
+        (SELECT MAX(fecha) FROM ventas WHERE id_cliente = c.id) as ultima_venta_fecha
         FROM clientes c 
         ORDER BY c.nombre ASC";
 
 $clientes = $conexion->query($sql)->fetchAll(PDO::FETCH_ASSOC);
 
-// Preparar datos para JavaScript de forma segura (Arregla el bug del clic en móvil)
+// JSON para JS
 $clientes_json = [];
 $totalDeudaCalle = 0;
+$cntDeudores = 0;
+$cntAlDia = 0;
+$totalClientes = count($clientes);
+
 foreach($clientes as $c) {
-    if($c['saldo_calculado'] > 0) $totalDeudaCalle += $c['saldo_calculado'];
+    if($c['saldo_calculado'] > 0.1) {
+        $totalDeudaCalle += $c['saldo_calculado'];
+        $cntDeudores++;
+    } else {
+        $cntAlDia++;
+    }
     
-    // Guardamos solo los datos necesarios en un array indexado por ID
     $clientes_json[$c['id']] = [
         'id' => $c['id'],
-        'nombre' => $c['nombre'],
+        'nombre' => htmlspecialchars($c['nombre']),
         'dni' => $c['dni'] ?? $c['dni_cuit'] ?? 'No registrado',
         'telefono' => $c['telefono'] ?? 'No registrado',
-        'direccion' => $c['direccion'] ?? '',
         'limite' => $c['limite_credito'],
         'deuda' => $c['saldo_calculado'],
         'puntos' => $c['puntos_acumulados'],
-        'ultima_venta' => $c['ultima_venta_fecha'] ? date('d/m/Y', strtotime($c['ultima_venta_fecha'])) : 'Nunca',
-        'total_compras' => $c['total_compras_cant']
+        'ultima_venta' => $c['ultima_venta_fecha'] ? date('d/m/Y', strtotime($c['ultima_venta_fecha'])) : 'Nunca'
     ];
 }
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <title>Gestión de Clientes</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+
+<?php include 'includes/layout_header.php'; ?>
+
+<style>
+    /* BANNER AZUL */
+    .header-blue {
+        background-color: #102A57;
+        color: white;
+        padding: 40px 0;
+        margin-bottom: 30px;
+        border-radius: 0 0 30px 30px;
+        box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25);
+        position: relative;
+        overflow: hidden;
+    }
+    .bg-icon-large {
+        position: absolute; top: 50%; right: 20px;
+        transform: translateY(-50%) rotate(-10deg);
+        font-size: 10rem; opacity: 0.1; color: white; pointer-events: none;
+    }
+    .stat-card {
+        border: none; border-radius: 15px; padding: 15px 20px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: transform 0.2s;
+        background: white; height: 100%; display: flex; align-items: center; justify-content: space-between;
+    }
+    .stat-card:hover { transform: translateY(-3px); cursor: pointer; }
+    .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+
+    /* ESTILOS TABLA */
+    .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; }
+    .avatar-circle { width: 45px; height: 45px; background-color: #e9ecef; color: #495057; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; text-transform: uppercase; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+    .badge-deuda { background-color: #ffe5e5; color: #d63384; font-weight: 600; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; }
+    .badge-aldia { background-color: #e6fcf5; color: #20c997; font-weight: 600; padding: 5px 10px; border-radius: 20px; font-size: 0.8rem; }
     
-    <style>
-        :root { --primary-color: #4361ee; --secondary-color: #3f37c9; --bg-color: #f8f9fa; }
-        body { background-color: var(--bg-color); font-family: 'Inter', sans-serif; color: #333; }
-        
-        .card-custom { border: none; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; }
-        
-        .avatar-circle {
-            width: 45px; height: 45px; background-color: #e9ecef; color: #495057;
-            border-radius: 50%; display: flex; align-items: center; justify-content: center;
-            font-weight: 700; font-size: 1.1rem; text-transform: uppercase; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-        }
+    .btn-action { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 50%; border: none; margin-left: 5px; transition: 0.2s; box-shadow: 0 2px 5px rgba(0,0,0,0.1); text-decoration: none; }
+    .btn-action:hover { transform: scale(1.1); filter: brightness(0.95); }
+    .btn-eye { background: #e0f2fe; color: #0284c7; }
+    .btn-wallet { background: #dcfce7; color: #16a34a; }
+    .btn-edit { background: #ffedd5; color: #ea580c; }
+    .btn-del { background: #fee2e2; color: #dc2626; }
 
-        .badge-deuda { background-color: #ffe5e5; color: #d63384; font-weight: 600; padding: 5px 10px; border-radius: 20px; }
-        .badge-aldia { background-color: #e6fcf5; color: #20c997; font-weight: 600; padding: 5px 10px; border-radius: 20px; }
-        
-        /* Botones más grandes para dedo en móvil */
-        .btn-icon { width: 38px; height: 38px; display: inline-flex; align-items: center; justify-content: center; border-radius: 8px; border: none; margin-left: 3px; }
-        
-        @media (max-width: 768px) {
-            .col-formulario { position: fixed; bottom: 0; left: 0; width: 100%; z-index: 1050; transform: translateY(110%); transition: transform 0.3s; padding: 0; }
-            .col-formulario.active { transform: translateY(0); }
-            .form-card { border-radius: 20px 20px 0 0 !important; box-shadow: 0 -5px 20px rgba(0,0,0,0.2); }
-            .fab-add { position: fixed; bottom: 20px; right: 20px; z-index: 1040; width: 60px; height: 60px; border-radius: 30px; font-size: 24px; box-shadow: 0 4px 15px rgba(67, 97, 238, 0.4); }
-            .overlay-mobile { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 1045; display: none; }
-            /* Espacio extra abajo para que no se tape el último cliente */
-            body { padding-bottom: 80px; }
-        }
-        
-        .modal-header-custom { background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)); color: white; }
-        .stat-box { background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; height: 100%; }
-        .stat-value { font-size: 1.5rem; font-weight: 700; margin-bottom: 0; }
-        .stat-label { font-size: 0.8rem; text-transform: uppercase; color: #6c757d; }
-    </style>
-</head>
-<body>
+    .modal-header-custom { background: #102A57; color: white; }
+    .stat-box { background: #f8f9fa; border-radius: 10px; padding: 15px; text-align: center; height: 100%; border: 1px solid #eee; }
+    .stat-value { font-size: 1.5rem; font-weight: 700; margin-bottom: 0; }
+    .stat-label { font-size: 0.8rem; text-transform: uppercase; color: #6c757d; }
+</style>
 
-    <?php 
-    if(file_exists('menu.php')) include 'menu.php'; 
-    elseif(file_exists('includes/menu.php')) include 'includes/menu.php';
-    ?>
+<div class="header-blue">
+    <i class="bi bi-people-fill bg-icon-large"></i>
+    <div class="container position-relative">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold mb-0">Cartera de Clientes</h2>
+                <p class="opacity-75 mb-0">Administración de cuentas corrientes</p>
+            </div>
+            <div>
+                <button type="button" class="btn btn-light text-primary fw-bold rounded-pill px-4 shadow-sm" onclick="abrirModalCrear()">
+                    <i class="bi bi-person-plus-fill me-2"></i> Nuevo Cliente
+                </button>
+            </div>
+        </div>
 
-    <div class="overlay-mobile" onclick="toggleFormulario()"></div>
-
-    <div class="container-fluid py-4 px-md-5">
-        
-        <div class="row mb-4">
-            <div class="col-12">
-                <div class="d-flex justify-content-between align-items-center flex-wrap gap-3">
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="filtrarEstado('todos')">
                     <div>
-                        <h2 class="fw-bold mb-0">Cartera de Clientes</h2>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Total Clientes</h6>
+                        <h2 class="mb-0 fw-bold text-dark"><?php echo $totalClientes; ?></h2>
                     </div>
-                    <div class="d-flex gap-3">
-                        <div class="card bg-white border-0 shadow-sm px-3 py-2 d-flex flex-row align-items-center gap-3">
-                            <div class="rounded-circle bg-light p-2 text-danger"><i class="bi bi-graph-down-arrow"></i></div>
-                            <div>
-                                <div class="small text-muted fw-bold">DEUDA CALLE</div>
-                                <div class="fw-bold fs-5 text-danger">$<?php echo number_format($totalDeudaCalle, 0, ',', '.'); ?></div>
-                            </div>
-                        </div>
+                    <div class="icon-box bg-primary bg-opacity-10 text-primary"><i class="bi bi-people"></i></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="filtrarEstado('deuda')">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Deuda en Calle</h6>
+                        <h2 class="mb-0 fw-bold text-danger">$<?php echo number_format($totalDeudaCalle, 0, ',', '.'); ?></h2>
                     </div>
+                    <div class="icon-box bg-danger bg-opacity-10 text-danger"><i class="bi bi-graph-down-arrow"></i></div>
+                </div>
+            </div>
+            <div class="col-12 col-md-4">
+                <div class="stat-card" onclick="filtrarEstado('aldia')">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Clientes al Día</h6>
+                        <h2 class="mb-0 fw-bold text-success"><?php echo $cntAlDia; ?></h2>
+                    </div>
+                    <div class="icon-box bg-success bg-opacity-10 text-success"><i class="bi bi-check-circle"></i></div>
                 </div>
             </div>
         </div>
+    </div>
+</div>
 
-        <div class="row g-4">
-            <div class="col-md-8 col-lg-9 order-2 order-md-1">
-                <div class="card card-custom h-100">
-                    <div class="card-header bg-white py-3 border-0">
-                        <div class="input-group">
-                            <span class="input-group-text bg-light border-end-0"><i class="bi bi-search"></i></span>
-                            <input type="text" id="buscador" class="form-control bg-light border-start-0" placeholder="Buscar cliente..." onkeyup="filtrarClientes()">
-                        </div>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0" id="tablaClientes">
-                                <thead class="bg-light text-secondary small text-uppercase">
-                                    <tr>
-                                        <th class="ps-4">Cliente</th>
-                                        <th class="d-none d-md-table-cell">Contacto</th>
-                                        <th class="text-center">Estado</th>
-                                        <th class="text-end pe-4">Acciones</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(count($clientes) > 0): ?>
-                                        <?php foreach($clientes as $c): 
-                                            $iniciales = strtoupper(substr($c['nombre'], 0, 2));
-                                            $deuda = $c['saldo_calculado'];
-                                            $limite = $c['limite_credito'];
-                                            $porcentajeDeuda = ($limite > 0) ? ($deuda / $limite) * 100 : 0;
-                                            $colorDeuda = ($deuda > 0) ? 'badge-deuda' : 'badge-aldia';
-                                            $textoDeuda = ($deuda > 0) ? 'Debe $'.number_format($deuda,0,',','.') : 'Al día';
-                                        ?>
-                                        <tr class="cliente-row">
-                                            <td class="ps-4">
-                                                <div class="d-flex align-items-center">
-                                                    <div class="avatar-circle me-3"><?php echo $iniciales; ?></div>
-                                                    <div>
-                                                        <div class="fw-bold text-dark nombre-cliente"><?php echo $c['nombre']; ?></div>
-                                                        <small class="text-muted d-block d-md-none dni-cliente"><?php echo $c['dni'] ?: 'S/DNI'; ?></small>
-                                                        <small class="text-muted d-none d-md-block dni-cliente">DNI: <?php echo $c['dni'] ?: '--'; ?></small>
-                                                    </div>
-                                                </div>
-                                            </td>
-                                            <td class="d-none d-md-table-cell">
-                                                <div class="small"><i class="bi bi-whatsapp text-success"></i> <?php echo $c['telefono'] ?: '--'; ?></div>
-                                            </td>
-                                            <td class="text-center">
-                                                <span class="<?php echo $colorDeuda; ?> small mb-1 d-inline-block"><?php echo $textoDeuda; ?></span>
-                                                <?php if($limite > 0): ?>
-                                                    <div class="progress mt-1" style="height: 4px; width: 80px; margin: 0 auto;">
-                                                        <div class="progress-bar <?php echo ($porcentajeDeuda>80)?'bg-danger':'bg-primary'; ?>" role="progressbar" style="width: <?php echo min($porcentajeDeuda, 100); ?>%"></div>
-                                                    </div>
-                                                <?php endif; ?>
-                                            </td>
-                                            <td class="text-end pe-4">
-                                                <div class="d-flex justify-content-end">
-                                                    <button class="btn-icon bg-info text-white shadow-sm" onclick="verResumen(<?php echo $c['id']; ?>)">
-                                                        <i class="bi bi-eye"></i>
-                                                    </button>
-                                                    
-                                                    <a href="cuenta_cliente.php?id=<?php echo $c['id']; ?>" class="btn-icon bg-success text-white shadow-sm">
-                                                        <i class="bi bi-wallet2"></i>
-                                                    </a>
-
-                                                    <button class="btn-icon bg-warning text-dark shadow-sm" 
-                                                        onclick="editar(<?php echo $c['id']; ?>)">
-                                                        <i class="bi bi-pencil-fill" style="font-size: 0.8rem;"></i>
-                                                    </button>
-                                                    
-                                                    <a href="clientes.php?borrar=<?php echo $c['id']; ?>" class="btn-icon bg-white text-danger border shadow-sm" onclick="return confirm('¿Borrar?');">
-                                                        <i class="bi bi-trash"></i>
-                                                    </a>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                        <?php endforeach; ?>
+<div class="container pb-5">
+    <div class="card card-custom">
+        <div class="card-header bg-white py-3 border-0 d-flex justify-content-between align-items-center">
+            <div class="input-group" style="max-width: 400px;">
+                <span class="input-group-text bg-light border-end-0"><i class="bi bi-search"></i></span>
+                <input type="text" id="buscador" class="form-control bg-light border-start-0" placeholder="Buscar por nombre o DNI..." onkeyup="filtrarClientes()">
+            </div>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="tablaClientes">
+                    <thead class="bg-light text-secondary small text-uppercase">
+                        <tr>
+                            <th class="ps-4">Cliente</th>
+                            <th class="d-none d-md-table-cell">Datos Contacto</th>
+                            <th class="text-center">Estado Deuda</th>
+                            <th class="text-end pe-4" style="min-width: 180px;">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <?php if(count($clientes) > 0): ?>
+                            <?php foreach($clientes as $c): 
+                                $iniciales = strtoupper(substr($c['nombre'], 0, 2));
+                                $deuda = floatval($c['saldo_calculado']);
+                                $limite = floatval($c['limite_credito']);
+                                $porcentajeDeuda = ($limite > 0) ? ($deuda / $limite) * 100 : 0;
+                                $colorDeuda = ($deuda > 0.1) ? 'badge-deuda' : 'badge-aldia';
+                                $textoDeuda = ($deuda > 0.1) ? 'Debe $'.number_format($deuda,0,',','.') : 'Al día';
+                                $esDeudor = ($deuda > 0.1) ? '1' : '0';
+                            ?>
+                            <tr class="cliente-row" data-es-deudor="<?php echo $esDeudor; ?>">
+                                <td class="ps-4">
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-circle me-3"><?php echo $iniciales; ?></div>
+                                        <div>
+                                            <div class="fw-bold text-dark nombre-cliente"><?php echo $c['nombre']; ?></div>
+                                            <small class="text-muted dni-cliente">DNI: <?php echo $c['dni'] ?: '--'; ?></small>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td class="d-none d-md-table-cell">
+                                    <?php if($c['telefono']): ?>
+                                        <div class="small"><i class="bi bi-whatsapp text-success me-1"></i> <?php echo $c['telefono']; ?></div>
                                     <?php else: ?>
-                                        <tr><td colspan="4" class="text-center py-5 text-muted">Sin clientes.</td></tr>
+                                        <div class="small text-muted">Sin teléfono</div>
                                     <?php endif; ?>
-                                </tbody>
-                            </table>
+                                </td>
+                                <td class="text-center">
+                                    <span class="<?php echo $colorDeuda; ?> mb-1 d-inline-block"><?php echo $textoDeuda; ?></span>
+                                    <?php if($limite > 0 && $deuda > 0): ?>
+                                        <div class="progress mt-1" style="height: 4px; width: 80px; margin: 0 auto;">
+                                            <div class="progress-bar <?php echo ($porcentajeDeuda>80)?'bg-danger':'bg-primary'; ?>" role="progressbar" style="width: <?php echo min($porcentajeDeuda, 100); ?>%"></div>
+                                        </div>
+                                    <?php endif; ?>
+                                </td>
+                                <td class="text-end pe-4">
+                                    <button type="button" class="btn-action btn-eye" onclick="verResumen(<?php echo $c['id']; ?>)" title="Ver Detalle">
+                                        <i class="bi bi-eye-fill"></i>
+                                    </button>
+                                    
+                                    <a href="cuenta_cliente.php?id=<?php echo $c['id']; ?>" class="btn-action btn-wallet" title="Cuenta Corriente">
+                                        <i class="bi bi-wallet2"></i>
+                                    </a>
+
+                                    <button type="button" class="btn-action btn-edit" onclick="editar(<?php echo $c['id']; ?>)" title="Editar">
+                                        <i class="bi bi-pencil-fill"></i>
+                                    </button>
+                                    
+                                    <button type="button" class="btn-action btn-del" onclick="borrarCliente(<?php echo $c['id']; ?>)" title="Eliminar">
+                                        <i class="bi bi-trash-fill"></i>
+                                    </button>
+                                </td>
+                            </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="4" class="text-center py-5 text-muted">No hay clientes registrados.</td></tr>
+                        <?php endif; ?>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalGestionCliente" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold" id="titulo-modal">Nuevo Cliente</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <form method="POST" id="formCliente">
+                    <input type="hidden" name="id_edit" id="id_edit">
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Nombre Completo <span class="text-danger">*</span></label>
+                        <input type="text" name="nombre" id="nombre" class="form-control form-control-lg fw-bold" required>
+                    </div>
+                    <div class="row g-2 mb-3">
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">DNI</label>
+                            <input type="text" name="dni" id="dni" class="form-control">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label small fw-bold">Teléfono</label>
+                            <input type="text" name="telefono" id="telefono" class="form-control">
+                        </div>
+                    </div>
+                    <div class="mb-4 bg-light p-3 rounded border">
+                        <label class="form-label small fw-bold text-danger">Límite de Fiado ($)</label>
+                        <input type="number" name="limite" id="limite" class="form-control fw-bold text-danger" value="0">
+                        <small class="text-muted d-block mt-1">Poner 0 para ilimitado.</small>
+                    </div>
+                    <div class="d-grid">
+                        <button type="submit" class="btn btn-primary btn-lg fw-bold" id="btn-guardar">GUARDAR CLIENTE</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="modalResumen" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header modal-header-custom border-0 pb-4">
+                <h5 class="modal-title fw-bold">Resumen de Cuenta</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body position-relative pt-0">
+                <div class="text-center" style="margin-top: -30px;">
+                    <div class="bg-white rounded-circle shadow d-inline-flex align-items-center justify-content-center" style="width: 70px; height: 70px; font-size: 2rem; font-weight: bold; color: #102A57;" id="modal-avatar">NN</div>
+                    <h4 class="mt-2 fw-bold" id="modal-nombre">--</h4>
+                    <span class="badge bg-light text-dark border" id="modal-dni">--</span>
+                </div>
+                <div class="row g-2 mt-3">
+                    <div class="col-6">
+                        <div class="stat-box border-danger border-start border-4 shadow-sm">
+                            <div class="stat-value text-danger" id="modal-deuda">$0</div>
+                            <div class="stat-label">Deuda Actual</div>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <div class="stat-box border-success border-start border-4 shadow-sm">
+                            <div class="stat-value text-success" id="modal-disponible">$0</div>
+                            <div class="stat-label">Disponible</div>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <div class="col-md-4 col-lg-3 col-formulario order-1 order-md-2" id="colFormulario">
-                <div class="card form-card border-0 h-100 bg-white">
-                    <div class="card-header bg-dark text-white fw-bold py-3 d-flex justify-content-between align-items-center">
-                        <span><i class="bi bi-person-plus-fill"></i> <span id="titulo-form">Nuevo Cliente</span></span>
-                        <button class="btn btn-sm text-white d-md-none" onclick="toggleFormulario()"><i class="bi bi-x-lg"></i></button>
-                    </div>
-                    <div class="card-body">
-                        <form method="POST">
-                            <input type="hidden" name="id_edit" id="id_edit">
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Nombre Completo</label>
-                                <input type="text" name="nombre" id="nombre" class="form-control form-control-lg fw-bold" required>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">DNI</label>
-                                <input type="text" name="dni" id="dni" class="form-control">
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label small fw-bold">Teléfono</label>
-                                <input type="text" name="telefono" id="telefono" class="form-control">
-                            </div>
-                            <div class="mb-4">
-                                <label class="form-label small fw-bold text-danger">Límite Fiado ($)</label>
-                                <input type="number" name="limite" id="limite" class="form-control fw-bold text-danger" value="0">
-                            </div>
-                            <div class="d-grid gap-2">
-                                <button type="submit" class="btn btn-primary btn-lg fw-bold" id="btn-guardar">GUARDAR</button>
-                                <button type="button" onclick="limpiar()" class="btn btn-light text-muted">Cancelar</button>
-                            </div>
-                        </form>
-                    </div>
+                <div class="mt-4 px-2">
+                    <div class="d-flex justify-content-between border-bottom py-2"><span class="text-muted">Última Compra:</span><span class="fw-bold" id="modal-ultima">--</span></div>
+                    <div class="d-flex justify-content-between border-bottom py-2"><span class="text-muted">Puntos:</span><span class="fw-bold text-warning" id="modal-puntos">0</span></div>
+                    <div class="d-flex justify-content-between border-bottom py-2"><span class="text-muted">Contacto:</span><span class="fw-bold" id="modal-telefono">--</span></div>
+                </div>
+                <div class="d-grid mt-4">
+                    <a href="#" id="btn-ir-cuenta" class="btn btn-primary btn-lg fw-bold shadow">VER HISTORIAL COMPLETO</a>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <button class="btn btn-primary fab-add d-md-none" onclick="toggleFormulario()">
-        <i class="bi bi-plus-lg"></i>
-    </button>
+<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 
-    <div class="modal fade" id="modalResumen" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content border-0 shadow-lg">
-                <div class="modal-header modal-header-custom border-0 pb-4">
-                    <h5 class="modal-title fw-bold">Resumen de Cuenta</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body position-relative pt-0">
-                    <div class="text-center" style="margin-top: -30px;">
-                        <div class="bg-white rounded-circle shadow d-inline-flex align-items-center justify-content-center" style="width: 70px; height: 70px; font-size: 2rem; font-weight: bold; color: var(--primary-color);" id="modal-avatar">
-                            NN
-                        </div>
-                        <h4 class="mt-2 fw-bold" id="modal-nombre">--</h4>
-                        <span class="badge bg-light text-dark border" id="modal-dni">--</span>
-                    </div>
+<script>
+    // BASE DE DATOS JS
+    const clientesDB = <?php echo json_encode($clientes_json); ?>;
+    
+    // --- MODALES CON JQUERY (Infalible) ---
+    function abrirModalCrear() {
+        document.getElementById('formCliente').reset();
+        document.getElementById('id_edit').value = '';
+        document.getElementById('titulo-modal').innerText = "Nuevo Cliente";
+        let btn = document.getElementById('btn-guardar');
+        btn.innerText = "GUARDAR CLIENTE";
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-primary');
+        $('#modalGestionCliente').modal('show');
+    }
 
-                    <div class="row g-2 mt-3">
-                        <div class="col-6">
-                            <div class="stat-box border-danger border-start border-4 shadow-sm">
-                                <div class="stat-value text-danger" id="modal-deuda">$0</div>
-                                <div class="stat-label">Deuda</div>
-                            </div>
-                        </div>
-                        <div class="col-6">
-                            <div class="stat-box border-success border-start border-4 shadow-sm">
-                                <div class="stat-value text-success" id="modal-disponible">$0</div>
-                                <div class="stat-label">Disponible</div>
-                            </div>
-                        </div>
-                    </div>
+    function editar(id) {
+        const data = clientesDB[id];
+        if(!data) return;
+        document.getElementById('id_edit').value = data.id;
+        document.getElementById('nombre').value = data.nombre;
+        document.getElementById('dni').value = (data.dni == 'No registrado') ? '' : data.dni;
+        document.getElementById('telefono').value = (data.telefono == 'No registrado') ? '' : data.telefono;
+        document.getElementById('limite').value = data.limite;
+        document.getElementById('titulo-modal').innerText = "Editar Cliente";
+        let btn = document.getElementById('btn-guardar');
+        btn.innerText = "ACTUALIZAR DATOS";
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-warning');
+        $('#modalGestionCliente').modal('show');
+    }
 
-                    <div class="mt-4 px-2">
-                        <div class="d-flex justify-content-between border-bottom py-2">
-                            <span class="text-muted">Última Compra:</span>
-                            <span class="fw-bold" id="modal-ultima">--</span>
-                        </div>
-                        <div class="d-flex justify-content-between border-bottom py-2">
-                            <span class="text-muted">Puntos:</span>
-                            <span class="fw-bold" id="modal-puntos">0</span>
-                        </div>
-                        <div class="d-flex justify-content-between border-bottom py-2">
-                            <span class="text-muted">Teléfono:</span>
-                            <span class="fw-bold" id="modal-telefono">--</span>
-                        </div>
-                    </div>
+    function verResumen(id) {
+        const data = clientesDB[id];
+        if(!data) return;
+        document.getElementById('modal-nombre').innerText = data.nombre;
+        document.getElementById('modal-dni').innerText = 'DNI: ' + data.dni;
+        document.getElementById('modal-avatar').innerText = data.nombre.substring(0,2).toUpperCase();
+        
+        const format = (n) => '$ ' + new Intl.NumberFormat('es-AR').format(n);
+        let deuda = parseFloat(data.deuda);
+        let limite = parseFloat(data.limite);
+        
+        let elDeuda = document.getElementById('modal-deuda');
+        elDeuda.innerText = format(deuda);
+        elDeuda.className = (deuda > 0.1) ? 'stat-value text-danger' : 'stat-value text-success';
+        document.getElementById('modal-disponible').innerText = (limite > 0) ? format(limite - deuda) : 'Ilimitado';
+        document.getElementById('modal-ultima').innerText = data.ultima_venta;
+        document.getElementById('modal-puntos').innerText = data.puntos;
+        document.getElementById('modal-telefono').innerText = data.telefono;
+        document.getElementById('btn-ir-cuenta').href = 'cuenta_cliente.php?id=' + data.id;
+        $('#modalResumen').modal('show');
+    }
 
-                    <div class="d-grid mt-4">
-                        <a href="#" id="btn-ir-cuenta" class="btn btn-primary btn-lg fw-bold shadow">VER DETALLE COMPLETO</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+    // --- FILTROS Y BUSCADOR ---
+    function filtrarEstado(tipo) {
+        let tr = document.querySelectorAll('.cliente-row');
+        tr.forEach(row => {
+            let esDeudor = row.getAttribute('data-es-deudor') === '1';
+            if(tipo === 'deuda') row.style.display = esDeudor ? '' : 'none';
+            else if(tipo === 'aldia') row.style.display = !esDeudor ? '' : 'none';
+            else row.style.display = '';
+        });
+    }
 
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        // BASE DE DATOS JS (Generada por PHP)
-        const clientesDB = <?php echo json_encode($clientes_json); ?>;
-        const modalResumen = new bootstrap.Modal(document.getElementById('modalResumen'));
-
-        // BUSCADOR
-        function filtrarClientes() {
-            let filter = document.getElementById("buscador").value.toUpperCase();
-            let tr = document.getElementById("tablaClientes").getElementsByTagName("tr");
-            for (let i = 0; i < tr.length; i++) {
-                let td = tr[i].querySelector(".nombre-cliente");
-                if (td) {
-                    let txt = td.textContent || td.innerText;
-                    tr[i].style.display = txt.toUpperCase().indexOf(filter) > -1 ? "" : "none";
+    function filtrarClientes() {
+        let filter = document.getElementById("buscador").value.toUpperCase();
+        let tr = document.getElementById("tablaClientes").getElementsByTagName("tr");
+        for (let i = 0; i < tr.length; i++) {
+            let td = tr[i].querySelector(".nombre-cliente");
+            let tdDni = tr[i].querySelector(".dni-cliente");
+            if (td) {
+                let txt = td.textContent || td.innerText;
+                let dni = tdDni ? (tdDni.textContent || tdDni.innerText) : '';
+                if (txt.toUpperCase().indexOf(filter) > -1 || dni.toUpperCase().indexOf(filter) > -1) {
+                    tr[i].style.display = "";
+                } else {
+                    tr[i].style.display = "none";
                 }
             }
         }
+    }
 
-        // FUNCIONES ACCIÓN
-        function verResumen(id) {
-            const data = clientesDB[id]; // Buscamos en la lista segura
-            if(!data) return alert("Error al cargar datos");
+    // --- BORRAR ---
+    function borrarCliente(id) {
+        Swal.fire({
+            title: '¿Eliminar Cliente?',
+            text: "No se podrá recuperar.",
+            icon: 'warning',
+            showCancelButton: true,
+            confirmButtonColor: '#d33',
+            cancelButtonColor: '#6c757d',
+            confirmButtonText: 'Sí, eliminar',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                window.location.href = 'clientes.php?borrar=' + id;
+            }
+        });
+    }
 
-            document.getElementById('modal-nombre').innerText = data.nombre;
-            document.getElementById('modal-dni').innerText = 'DNI: ' + data.dni;
-            document.getElementById('modal-avatar').innerText = data.nombre.substring(0,2).toUpperCase();
-            
-            const format = (n) => '$ ' + new Intl.NumberFormat('es-AR').format(n);
-            let deuda = parseFloat(data.deuda);
-            let limite = parseFloat(data.limite);
-            
-            document.getElementById('modal-deuda').innerText = format(deuda);
-            document.getElementById('modal-deuda').className = (deuda > 0) ? 'stat-value text-danger' : 'stat-value text-success';
-            document.getElementById('modal-disponible').innerText = (limite > 0) ? format(limite - deuda) : 'Ilimitado';
-            
-            document.getElementById('modal-ultima').innerText = data.ultima_venta;
-            document.getElementById('modal-puntos').innerText = data.puntos;
-            document.getElementById('modal-telefono').innerText = data.telefono;
-            document.getElementById('btn-ir-cuenta').href = 'cuenta_cliente.php?id=' + data.id;
+    // --- ALERTAS ---
+    <?php if(isset($_GET['msg']) && $_GET['msg'] == 'eliminado'): ?>
+        Swal.fire('Eliminado', 'El cliente ha sido eliminado.', 'success');
+    <?php endif; ?>
+    <?php if(isset($_GET['error']) && $_GET['error'] == 'tiene_datos'): ?>
+        Swal.fire('Atención', 'No se puede eliminar porque tiene historial de ventas o movimientos.', 'warning');
+    <?php endif; ?>
+    <?php if(isset($_GET['error']) && $_GET['error'] == 'db'): ?>
+        Swal.fire('Error', 'Error en la base de datos.', 'error');
+    <?php endif; ?>
+</script>
 
-            modalResumen.show();
-        }
-
-        function editar(id) {
-            const data = clientesDB[id];
-            document.getElementById('id_edit').value = data.id;
-            document.getElementById('nombre').value = data.nombre;
-            document.getElementById('dni').value = (data.dni == 'No registrado') ? '' : data.dni;
-            document.getElementById('telefono').value = (data.telefono == 'No registrado') ? '' : data.telefono;
-            document.getElementById('limite').value = data.limite;
-            
-            document.getElementById('titulo-form').innerText = "Editar Cliente";
-            document.getElementById('btn-guardar').innerText = "ACTUALIZAR";
-            document.getElementById('btn-guardar').classList.replace('btn-primary', 'btn-warning');
-            
-            if(window.innerWidth < 768) toggleFormulario();
-        }
-
-        function limpiar() {
-            document.querySelector('form').reset();
-            document.getElementById('id_edit').value = '';
-            document.getElementById('titulo-form').innerText = "Nuevo Cliente";
-            document.getElementById('btn-guardar').innerText = "GUARDAR";
-            document.getElementById('btn-guardar').classList.replace('btn-warning', 'btn-primary');
-            if(window.innerWidth < 768) toggleFormulario();
-        }
-
-        function toggleFormulario() {
-            document.getElementById('colFormulario').classList.toggle('active');
-            let overlay = document.querySelector('.overlay-mobile');
-            overlay.style.display = (overlay.style.display === 'block') ? 'none' : 'block';
-        }
-    </script>
-</body>
-</html>
+<?php include 'includes/layout_footer.php'; ?>

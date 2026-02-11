@@ -50,8 +50,11 @@ $mensaje_sweet = '';
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     $nivel = $_POST['nivel'] ?? 0;
     $com = trim($_POST['comentario']);
-    $nom = trim($_POST['nombre']);
-    $cont = trim($_POST['contacto']);
+    $nom  = trim($_POST['nombre']);
+// Unimos el prefijo con el número y limpiamos cualquier carácter que no sea número
+$pref = $_POST['prefijo'] ?? '';
+$num  = preg_replace('/[^0-9]/', '', $_POST['contacto']);
+$cont = (!empty($num)) ? $pref . $num : '';
     
     if($nivel > 0) {
         try {
@@ -206,7 +209,19 @@ if ($esAdmin) {
 
                     <div class="row g-3 mb-4">
                         <div class="col-6"><div class="input-group"><span class="input-group-text bg-white border-end-0"><i class="bi bi-person"></i></span><input type="text" name="nombre" class="form-control form-control-lg bg-light border-start-0" placeholder="Tu Nombre"></div></div>
-                        <div class="col-6"><div class="input-group"><span class="input-group-text bg-white border-end-0"><i class="bi bi-whatsapp"></i></span><input type="text" name="contacto" class="form-control form-control-lg bg-light border-start-0" placeholder="WhatsApp (Opcional)"></div></div>
+                        <div class="col-6">
+    <div class="input-group">
+        <select name="prefijo" class="input-group-text bg-white border-end-0" style="max-width: 85px; font-size: 0.8rem; cursor: pointer;">
+            <option value="549" selected>🇦🇷 +54</option>
+            <option value="598">🇺🇾 +598</option>
+            <option value="56">🇨🇱 +56</option>
+            <option value="591">🇧🇴 +591</option>
+            <option value="55">🇧🇷 +55</option>
+            <option value="595">🇵🇾 +595</option>
+        </select>
+        <input type="tel" name="contacto" class="form-control form-control-lg bg-light border-start-0" placeholder="WhatsApp">
+    </div>
+</div>
                     </div>
 
                     <div class="d-grid mb-4">
@@ -241,17 +256,36 @@ if ($esAdmin) {
             if(nivel == 1) {
                 var tiempoDuracion = 3000;
                 const contenedor = document.createElement('div');
+                // El contenedor ahora usa unidades de viewport dinámicas (dvh) para móviles
                 contenedor.style.position = 'fixed'; contenedor.style.top = '0'; contenedor.style.left = '0';
-                contenedor.style.width = '100%'; contenedor.style.height = '100vh';
-                contenedor.style.zIndex = '99999'; contenedor.style.backgroundColor = 'rgba(0, 0, 0, 0.7)';
+                contenedor.style.width = '100vw'; contenedor.style.height = '100dvh';
+                contenedor.style.zIndex = '999999'; contenedor.style.backgroundColor = 'rgba(0, 0, 0, 0.85)';
                 contenedor.style.display = 'flex'; contenedor.style.justifyContent = 'center'; contenedor.style.alignItems = 'center';
-                contenedor.style.pointerEvents = 'none'; contenedor.style.animation = `strike ${tiempoDuracion}ms ease-out forwards`;
+                contenedor.style.pointerEvents = 'none';
+
                 const img = document.createElement('img');
-                img.src = 'img/norris.gif'; img.style.maxWidth = '90%'; img.style.maxHeight = '80vh'; img.style.width = 'auto'; img.style.height = 'auto';
-                img.style.border = '5px solid #000000'; img.style.boxShadow = '0 0 40px #000000'; img.style.borderRadius = '10px';
-                contenedor.appendChild(img); document.body.appendChild(contenedor); document.body.classList.add('shake');
-                setTimeout(() => { contenedor.remove(); document.body.classList.remove('shake'); }, tiempoDuracion); 
+                img.src = 'img/norris.gif'; 
+                // Aplicamos la animación SOLO a la imagen para no mover el centro del contenedor
+                img.style.animation = `strike ${tiempoDuracion}ms ease-out forwards`;
+                img.style.maxWidth = '85vw'; 
+                img.style.maxHeight = '70dvh'; 
+                img.style.width = 'auto'; img.style.height = 'auto';
+                img.style.objectFit = 'contain';
+                img.style.border = '5px solid #000000'; img.style.boxShadow = '0 0 50px #000000'; img.style.borderRadius = '15px';
+
+                contenedor.appendChild(img);
+                document.body.appendChild(contenedor);
+                
+                // Sacudimos solo el contenido, así el GIF se mantiene centrado aunque haya scroll
+                const contenido = document.querySelector('.main-wrapper');
+                if(contenido) contenido.classList.add('shake');
+                
+                setTimeout(() => { 
+                    contenedor.remove(); 
+                    if(contenido) contenido.classList.remove('shake'); 
+                }, tiempoDuracion); 
             }
+            // Restauramos los efectos de las otras caritas que faltaban
             if(nivel == 2) { var end = Date.now() + 1000; (function frame() { confetti({ particleCount: 5, angle: 90, spread: 90, origin: { x: Math.random(), y: -0.1 }, colors: ['#87CEEB', '#4682B4', '#00008B'], shapes: ['circle'], gravity: 4, startVelocity: 40, scalar: 0.8, ticks: 300 }); if (Date.now() < end) requestAnimationFrame(frame); }()); }
             if(nivel == 3) { confetti({ particleCount: 100, spread: 70, origin: { y: 0.6 }, colors: ['#0d6efd', '#0dcaf0'] }); }
             if(nivel == 4) { confetti({ particleCount: 60, spread: 80, origin: { y: 0.6 }, shapes: ['star'], colors: ['#FFD700', '#FFA500'] }); }

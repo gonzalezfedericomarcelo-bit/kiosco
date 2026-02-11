@@ -23,11 +23,16 @@ if($rol_usuario <= 2) {
     $alertas_vencimiento = $conexion->prepare("SELECT COUNT(*) FROM productos WHERE activo=1 AND fecha_vencimiento IS NOT NULL AND fecha_vencimiento BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL ? DAY)");
     $alertas_vencimiento->execute([$dias]);
     $alertas_vencimiento = $alertas_vencimiento->fetchColumn();
-    $alertas_cumple = $conexion->query("SELECT COUNT(*) FROM clientes WHERE MONTH(fecha_nacimiento)=MONTH(CURDATE()) AND DAY(fecha_nacimiento)=DAY(CURDATE())")->fetchColumn();
+    $res_col = $conexion->query("SHOW COLUMNS FROM clientes LIKE 'fecha_nacimiento'");
+$alertas_cumple = 0;
+if($res_col && $res_col->rowCount() > 0) {
+    $q_cumple = $conexion->query("SELECT COUNT(*) FROM clientes WHERE MONTH(fecha_nacimiento)=MONTH(CURDATE()) AND DAY(fecha_nacimiento)=DAY(CURDATE())");
+    $alertas_cumple = $q_cumple ? $q_cumple->fetchColumn() : 0;
+}
 }
 ?>
 
-<div class="row g-3 mb-4">
+<div class="row g-3 mb-4 mt-2">
     <div class="col-6 col-md-4 col-xl-2">
         <a href="reportes.php?filtro=hoy" class="widget-stat">
             <span class="stat-label">Ventas Hoy</span>

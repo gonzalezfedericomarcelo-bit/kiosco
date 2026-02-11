@@ -499,9 +499,13 @@ require_once 'includes/layout_header.php';
     }
 
     buscador.addEventListener('keyup', aplicarFiltros);
-    filtroCat.addEventListener('change', aplicarFiltros);
-    filtroEst.addEventListener('change', aplicarFiltros);
-    orden.addEventListener('change', aplicarFiltros);
+    // Leer filtro de la URL al cargar la página
+const urlParams = new URLSearchParams(window.location.search);
+    const f = urlParams.get('filtro');
+    if(f) {
+        filtroEst.value = f;
+        aplicarFiltros();
+    }
 
     // 2. FOTO RÁPIDA
     let currentId = null;

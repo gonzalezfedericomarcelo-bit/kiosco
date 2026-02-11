@@ -1,5 +1,5 @@
 <?php
-// gestionar_premios.php - LIMPIO (USA TUS INCLUDES NATIVOS)
+// gestionar_premios.php - VERSIÓN BLINDADA (Guardado Directo + Verificación Visual)
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
@@ -13,7 +13,11 @@ if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
 $mensaje = '';
 
-// 3. AGREGAR PREMIO
+// CARGAR PRODUCTOS Y COMBOS PARA EL SELECTOR
+$prods_db = $conexion->query("SELECT id, descripcion FROM productos WHERE activo=1 AND tipo != 'combo' ORDER BY descripcion")->fetchAll(PDO::FETCH_ASSOC);
+$combos_db = $conexion->query("SELECT id, nombre FROM combos WHERE activo=1 ORDER BY nombre")->fetchAll(PDO::FETCH_ASSOC);
+
+// 3. AGREGAR PREMIO (LÓGICA CORREGIDA)
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['agregar'])) {
     try {
         $nombre = $_POST['nombre'];
@@ -22,8 +26,40 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['agregar'])) {
         $es_cupon = isset($_POST['es_cupon']) ? 1 : 0;
         $monto = $_POST['monto_dinero'] ?? 0;
         
-        $conexion->prepare("INSERT INTO premios (nombre, puntos_necesarios, stock, es_cupon, monto_dinero, activo) VALUES (?, ?, ?, ?, ?, 1)")
-                 ->execute([$nombre, $puntos, $stock, $es_cupon, $monto]);
+        $tipo_articulo = $_POST['tipo_articulo'] ?? 'ninguno';
+        $id_articulo = null;
+
+        // LÓGICA DE SELECCIÓN DIRECTA (Ignoramos el hidden JS para mayor seguridad)
+        if ($es_cupon) {
+            $tipo_articulo = 'ninguno';
+            $id_articulo = null;
+        } else {
+            if ($tipo_articulo == 'producto') {
+                $id_articulo = !empty($_POST['id_articulo_prod']) ? $_POST['id_articulo_prod'] : null;
+            } elseif ($tipo_articulo == 'combo') {
+                $id_articulo = !empty($_POST['id_articulo_combo']) ? $_POST['id_articulo_combo'] : null;
+            }
+        }
+
+        // 1. CAPTURAR DATOS DEL SELECTOR
+        $tipo_articulo = $_POST['tipo_articulo'] ?? 'ninguno';
+        $id_articulo = null;
+
+        if ($tipo_articulo == 'producto') {
+            $id_articulo = !empty($_POST['id_articulo_prod']) ? $_POST['id_articulo_prod'] : null;
+        } elseif ($tipo_articulo == 'combo') {
+            $id_articulo = !empty($_POST['id_articulo_combo']) ? $_POST['id_articulo_combo'] : null;
+        }
+
+        // Si es cupón de dinero, limpiamos cualquier selección de artículo
+        if ($es_cupon) { 
+            $tipo_articulo = 'ninguno'; 
+            $id_articulo = null; 
+        }
+
+        // 2. INSERT NUEVO (CON LOS CAMPOS DE VINCULACIÓN)
+        $conexion->prepare("INSERT INTO premios (nombre, puntos_necesarios, stock, es_cupon, monto_dinero, activo, id_articulo, tipo_articulo) VALUES (?, ?, ?, ?, ?, 1, ?, ?)")
+                 ->execute([$nombre, $puntos, $stock, $es_cupon, $monto, $id_articulo, $tipo_articulo]);
         
         header("Location: gestionar_premios.php?msg=creado"); exit;
     } catch (Exception $e) {
@@ -37,9 +73,17 @@ if (isset($_GET['borrar'])) {
     header("Location: gestionar_premios.php?msg=borrado"); exit;
 }
 
-// 5. LISTAR
+// 5. LISTAR (Con datos de vinculación)
 try {
-    $lista = $conexion->query("SELECT * FROM premios ORDER BY puntos_necesarios ASC")->fetchAll(PDO::FETCH_ASSOC);
+    $sqlLista = "SELECT p.*, 
+                 CASE 
+                    WHEN p.tipo_articulo = 'producto' THEN (SELECT descripcion FROM productos WHERE id = p.id_articulo)
+                    WHEN p.tipo_articulo = 'combo' THEN (SELECT nombre FROM combos WHERE id = p.id_articulo)
+                    ELSE NULL 
+                 END as nombre_vinculo
+                 FROM premios p 
+                 ORDER BY p.puntos_necesarios ASC";
+    $lista = $conexion->query($sqlLista)->fetchAll(PDO::FETCH_ASSOC);
     $total_premios = count($lista);
     $fisicos = 0; $cupones = 0;
     foreach($lista as $p) { if($p['es_cupon'] == 1) $cupones++; else $fisicos++; }
@@ -52,56 +96,18 @@ try {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Premios y Fidelización</title>
-    
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-
     <style>
-        /* ESTILOS DEL DISEÑO (BANNER, WIDGETS, BADGES) */
-        
-        /* Ajuste crítico para que el menú no quede atrás del banner */
-        .header-blue {
-            background-color: #102A57;
-            color: white;
-            padding: 40px 0;
-            margin-bottom: 30px;
-            border-radius: 0 0 30px 30px;
-            box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25);
-            position: relative;
-            overflow: visible; /* IMPORTANTE: Para que no corte menús si se superponen */
-            z-index: 1;
-        }
-        
-        .bg-icon-large {
-            position: absolute; top: 50%; right: 20px;
-            transform: translateY(-50%) rotate(-10deg);
-            font-size: 10rem; opacity: 0.1; color: white; pointer-events: none;
-            z-index: 0;
-        }
-        
-        .stat-card {
-            border: none; border-radius: 15px; padding: 15px 20px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: transform 0.2s;
-            background: white; height: 100%; display: flex; align-items: center; justify-content: space-between;
-        }
+        .header-blue { background-color: #102A57; color: white; padding: 40px 0; margin-bottom: 30px; border-radius: 0 0 30px 30px; box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25); position: relative; z-index: 1; }
+        .bg-icon-large { position: absolute; top: 50%; right: 20px; transform: translateY(-50%) rotate(-10deg); font-size: 10rem; opacity: 0.1; color: white; pointer-events: none; z-index: 0; }
+        .stat-card { border: none; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); background: white; height: 100%; display: flex; align-items: center; justify-content: space-between; transition: transform 0.2s; }
         .stat-card:hover { transform: translateY(-3px); }
-        
-        /* Iconos cuadrados de colores */
         .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
         .bg-primary-soft { background-color: rgba(13, 110, 253, 0.1); color: #0d6efd; }
         .bg-secondary-soft { background-color: rgba(108, 117, 125, 0.1); color: #6c757d; }
         .bg-success-soft { background-color: rgba(25, 135, 84, 0.1); color: #198754; }
-
-        /* BADGE AMARILLO CON TEXTO NEGRO (SOLUCIÓN VISUAL) */
-        .badge-puntos { 
-            background-color: #ffc107 !important; 
-            color: #000000 !important; 
-            border: 1px solid #e0a800; 
-            font-weight: bold;
-        }
-
+        .badge-puntos { background-color: #ffc107 !important; color: #000000 !important; border: 1px solid #e0a800; font-weight: bold; }
         .card-custom { border: none; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
-        
-        /* Ajustes menores de formulario */
         .form-control-lg { font-size: 1rem; padding: 0.75rem 1rem; }
     </style>
 </head>
@@ -179,19 +185,74 @@ try {
 
                             <div class="card border-0 shadow-sm mb-4">
                                 <div class="card-body p-3">
-                                    <div class="form-check form-switch mb-2">
-                                        <input class="form-check-input" type="checkbox" name="es_cupon" id="checkCupon" onchange="toggleMonto()">
-                                        <label class="form-check-label fw-bold text-dark" style="cursor:pointer;" for="checkCupon">¿Es dinero ($)?</label>
+                                    <label class="small fw-bold text-muted mb-2">TIPO DE PREMIO</label>
+                                    
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="radio" name="tipo_premio_radio" id="radioStock" checked onchange="toggleTipoPremio()">
+                                        <label class="form-check-label" for="radioStock">Mercadería (Descuenta Stock)</label>
                                     </div>
-                                    <div id="divMonto" style="display:none;" class="mt-2 border-top pt-2">
-                                        <label class="small text-muted mb-1 fw-bold">Monto a regalar</label>
+
+                                    <div id="divArticulos" class="ms-3 mb-3 border-start ps-3 border-3 border-primary">
+                                        <div class="mb-2">
+                                            <select name="tipo_articulo" class="form-select form-select-sm mb-2" id="selectTipoArt" onchange="cargarListaArticulos()">
+                                                <option value="ninguno">-- Sin vinculación --</option>
+                                                <option value="producto">Producto Individual</option>
+                                                <option value="combo">Combo / Pack</option>
+                                            </select>
+                                            
+                                            <select name="id_articulo_prod" id="selProd" class="form-select form-select-sm" style="display:none;">
+                                                <option value="">Seleccionar Producto...</option>
+                                                <?php foreach($prods_db as $p): ?>
+                                                    <option value="<?php echo $p['id']; ?>"><?php echo $p['descripcion']; ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+
+                                            <select name="id_articulo_combo" id="selCombo" class="form-select form-select-sm" style="display:none;">
+                                                <option value="">Seleccionar Combo...</option>
+                                                <?php foreach($combos_db as $c): ?>
+                                                    <option value="<?php echo $c['id']; ?>"><?php echo $c['nombre']; ?></option>
+                                                <?php endforeach; ?>
+                                            </select>
+                                        </div>
+                                    </div>
+
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="radio" name="tipo_premio_radio" id="checkCupon" onchange="toggleTipoPremio()">
+                                        <label class="form-check-label fw-bold text-success" for="checkCupon">Dinero en Cuenta ($)</label>
+                                    </div>
+                                    
+                                    <div id="divMonto" style="display:none;" class="mt-2 ms-3">
                                         <div class="input-group input-group-sm">
                                             <span class="input-group-text bg-success text-white border-success fw-bold">$</span>
                                             <input type="number" step="0.01" name="monto_dinero" class="form-control border-success text-success fw-bold" placeholder="500">
                                         </div>
                                     </div>
+                                    
+                                    <input type="hidden" name="es_cupon" id="hiddenEsCupon" value="0">
                                 </div>
                             </div>
+
+                            <script>
+                                function toggleTipoPremio() {
+                                    const esDinero = document.getElementById('checkCupon').checked;
+                                    document.getElementById('divMonto').style.display = esDinero ? 'block' : 'none';
+                                    document.getElementById('divArticulos').style.display = esDinero ? 'none' : 'block';
+                                    document.getElementById('hiddenEsCupon').value = esDinero ? 1 : 0;
+                                }
+
+                                function cargarListaArticulos() {
+                                    const tipo = document.getElementById('selectTipoArt').value;
+                                    const selProd = document.getElementById('selProd');
+                                    const selCombo = document.getElementById('selCombo');
+
+                                    selProd.style.display = (tipo === 'producto') ? 'block' : 'none';
+                                    selCombo.style.display = (tipo === 'combo') ? 'block' : 'none';
+                                    
+                                    // Limpiamos selección al cambiar tipo
+                                    selProd.value = "";
+                                    selCombo.value = "";
+                                }
+                            </script>
 
                             <button type="submit" class="btn btn-primary w-100 fw-bold py-2 shadow-sm">
                                 <i class="bi bi-save me-2"></i> GUARDAR
@@ -212,8 +273,8 @@ try {
                             <thead class="bg-light small text-uppercase text-muted">
                                 <tr>
                                     <th class="ps-4 py-3">Premio</th>
-                                    <th>Costo</th>
-                                    <th>Tipo / Stock</th>
+                                    <th>Vinculación (Stock)</th>
+                                    <th>Costo Puntos</th>
                                     <th class="text-end pe-4">Acciones</th>
                                 </tr>
                             </thead>
@@ -223,22 +284,30 @@ try {
                                     <tr>
                                         <td class="ps-4">
                                             <div class="fw-bold text-dark"><?php echo htmlspecialchars($p['nombre']); ?></div>
+                                            <?php if($p['es_cupon']): ?>
+                                                <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25 small">
+                                                    <i class="bi bi-cash-coin"></i> $<?php echo number_format($p['monto_dinero'], 0); ?>
+                                                </span>
+                                            <?php endif; ?>
+                                        </td>
+                                        <td>
+                                            <?php if(!$p['es_cupon']): ?>
+                                                <?php if(!empty($p['nombre_vinculo'])): ?>
+                                                    <span class="badge bg-info bg-opacity-10 text-primary border border-info border-opacity-25">
+                                                        <?php echo ($p['tipo_articulo']=='combo' ? '🎒 ' : '📦 ') . htmlspecialchars($p['nombre_vinculo']); ?>
+                                                    </span>
+                                                <?php else: ?>
+                                                    <span class="badge bg-secondary bg-opacity-10 text-muted border">Sin vincular</span>
+                                                <?php endif; ?>
+                                                <div class="small text-muted mt-1">Stock Virtual: <?php echo $p['stock']; ?></div>
+                                            <?php else: ?>
+                                                <span class="text-muted small">-</span>
+                                            <?php endif; ?>
                                         </td>
                                         <td>
                                             <span class="badge badge-puntos rounded-pill px-3 py-2">
                                                 <i class="bi bi-star-fill text-dark me-1"></i> <?php echo number_format($p['puntos_necesarios'], 0, ',', '.'); ?>
                                             </span>
-                                        </td>
-                                        <td>
-                                            <?php if($p['es_cupon']): ?>
-                                                <span class="badge bg-success bg-opacity-10 text-success border border-success border-opacity-25">
-                                                    <i class="bi bi-cash-coin"></i> $<?php echo number_format($p['monto_dinero'], 0); ?>
-                                                </span>
-                                            <?php else: ?>
-                                                <span class="text-secondary small">
-                                                    Stock: <strong class="text-dark"><?php echo $p['stock']; ?></strong>
-                                                </span>
-                                            <?php endif; ?>
                                         </td>
                                         <td class="text-end pe-4">
                                             <button onclick="confirmarBorrado(<?php echo $p['id']; ?>)" 
@@ -262,7 +331,6 @@ try {
     <?php include 'includes/layout_footer.php'; ?>
 
     <script>
-        // CONFIRMACIÓN DE BORRADO (SWEETALERT)
         function confirmarBorrado(id) {
             Swal.fire({
                 title: '¿Eliminar premio?',
@@ -280,13 +348,6 @@ try {
             })
         }
 
-        function toggleMonto() {
-            var check = document.getElementById('checkCupon');
-            var div = document.getElementById('divMonto');
-            div.style.display = check.checked ? 'block' : 'none';
-        }
-        
-        // Alertas Toast
         const urlParams = new URLSearchParams(window.location.search);
         if(urlParams.get('msg') === 'creado') {
             Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Premio agregado', showConfirmButton: false, timer: 3000 });

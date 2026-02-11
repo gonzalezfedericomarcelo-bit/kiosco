@@ -21,6 +21,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
         $_SESSION['nombre'] = $user->nombre_completo;
         $_SESSION['usuario'] = $user->usuario;
         $_SESSION['rol'] = $user->id_rol;
+        // SEGURIDAD: Regeneramos el ID de sesión para evitar Session Hijacking
+        session_regenerate_id(true);
 
         // --- CARGAR PERMISOS DEL ROL ---
         $stmtPermisos = $conexion->prepare("

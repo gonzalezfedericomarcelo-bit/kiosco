@@ -26,8 +26,9 @@ if($trigger) {
     elseif($trigger == 'mes') { $inicio = date('Y-m-01'); $fin = date('Y-m-t'); }
 }
 
-$id_usuario = $_GET['id_usuario'] ?? '';
-$metodo = $_GET['metodo'] ?? '';
+// Forzamos que el ID de usuario sea un entero y limpiamos el método de pago
+$id_usuario = (isset($_GET['id_usuario']) && $_GET['id_usuario'] !== '') ? intval($_GET['id_usuario']) : '';
+$metodo = isset($_GET['metodo']) ? preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['metodo']) : '';
 
 // 2. CONSULTA DE VENTAS (Vendedor + Cliente + Costos)
 try {
@@ -208,7 +209,7 @@ $usuarios_db = $conexion->query("SELECT * FROM usuarios")->fetchAll(PDO::FETCH_A
                         <table class="table table-hover align-middle mb-0" id="tabla-export">
                             <thead class="bg-light">
                                 <tr class="text-uppercase small fw-bold text-muted">
-                                    <th>Ticket</th><th>Fecha</th><th>Vendedor</th><th>Cliente</th><th>Pago</th><th class="text-end">Venta</th><th class="text-end">Costo</th><th class="text-end pe-3">Margen</th>
+                                    <th>Ticket</th><th>Fecha</th><th>Vendedor</th><th>Cliente</th><th>Pago</th><th class="text-end">Venta</th><th class="text-end">Costo</th><th class="text-end">Margen</th><th class="text-center">Ver</th>
                                 </tr>
                             </thead>
                             <tbody class="small">
@@ -227,7 +228,12 @@ $usuarios_db = $conexion->query("SELECT * FROM usuarios")->fetchAll(PDO::FETCH_A
     <td><span class="badge bg-light text-dark border"><?php echo $v['metodo_pago']; ?></span></td>
     <td class="text-end fw-bold">$<?php echo number_format($total_v, 0, ',', '.'); ?></td>
     <td class="text-end text-muted">$<?php echo number_format($costo_v, 0, ',', '.'); ?></td>
-    <td class="text-end fw-bold text-success pe-3">$<?php echo number_format($margen_v, 0, ',', '.'); ?></td>
+    <td class="text-end fw-bold text-success">$<?php echo number_format($margen_v, 0, ',', '.'); ?></td>
+    <td class="text-center">
+        <a href="ticket.php?id=<?php echo $v['id']; ?>" onclick="window.open(this.href, 'TicketView', 'width=350,height=600'); return false;" class="text-primary" title="Ver Ticket">
+            <i class="bi bi-eye-fill"></i>
+        </a>
+    </td>
 </tr>
                                 <?php endforeach; ?>
                             </tbody>

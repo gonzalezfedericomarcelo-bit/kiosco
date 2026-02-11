@@ -14,7 +14,9 @@ if (!isset($_SESSION['usuario_id']) || $_SESSION['rol'] > 2) {
     header("Location: dashboard.php"); exit;
 }
 
-$id_proveedor = $_GET['id'] ?? null;
+// Validamos que el ID sea numérico
+$id_proveedor = intval($_GET['id'] ?? 0);
+if ($id_proveedor <= 0) { header("Location: proveedores.php"); exit; }
 if (!$id_proveedor) { header("Location: proveedores.php"); exit; }
 
 // 3. DATOS DEL PROVEEDOR

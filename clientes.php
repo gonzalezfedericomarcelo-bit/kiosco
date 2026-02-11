@@ -11,7 +11,10 @@ if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
 // 2. LÓGICA DE BORRADO (Seguridad recuperada - No borra si tiene deudas o ventas)
 if (isset($_GET['borrar'])) {
-    $id_borrar = $_GET['borrar'];
+    if (!isset($_GET['token']) || $_GET['token'] !== $_SESSION['csrf_token']) {
+        die("Error de seguridad: Token inválido.");
+    }
+    $id_borrar = intval($_GET['borrar']);
     try {
         $checkCC = $conexion->prepare("SELECT COUNT(*) FROM movimientos_cc WHERE id_cliente = ?");
         $checkCC->execute([$id_borrar]);
@@ -196,86 +199,86 @@ foreach($clientes as $c) {
                 <th class="text-end pe-4">Acciones</th>
             </tr>
         </thead>
-        <tbody>
-            <?php foreach($clientes as $c): 
-                $deuda = floatval($c['saldo_calculado']);
-                $limite = floatval($c['limite_credito']);
-                $disponible = $limite - $deuda;
-                $esDeudor = ($deuda > 0.1) ? '1' : '0';
-                
-                $hoy = date('m-d');
-                $f_nac = $c['fecha_nacimiento'] ? date('m-d', strtotime($c['fecha_nacimiento'])) : '';
-                $es_cumple_fila = ($hoy == $f_nac) ? '1' : '0';
-            ?>
-            <tr class="cliente-row" data-es-deudor="<?php echo $esDeudor; ?>" data-cumple="<?php echo $es_cumple_fila; ?>">
-                <td data-label="Cliente" class="ps-4">
-                    <div class="d-flex align-items-center">
-                        <div class="avatar-circle me-3 bg-primary bg-opacity-10 text-primary">
-                            <?php echo strtoupper(substr($c['nombre'], 0, 2)); ?>
-                        </div>
-                        <div>
-                            <div class="fw-bold text-dark"><?php echo $c['nombre']; ?></div>
-                            <small class="text-muted">ID #<?php echo $c['id']; ?></small>
-                        </div>
-                    </div>
-                </td>
-                
-                <td data-label="Identidad">
-                    <div class="small fw-bold text-dark"><?php echo $c['dni'] ?: '--'; ?></div>
-                    <span class="badge bg-light text-primary border">@<?php echo $c['usuario'] ?: 'sin_usuario'; ?></span>
-                </td>
+        <tbody class="bg-white">
+    <?php foreach($clientes as $c): 
+        $deuda = floatval($c['saldo_calculado']);
+        $limite = floatval($c['limite_credito']);
+        $disponible = $limite - $deuda;
+        $esDeudor = ($deuda > 0.1) ? '1' : '0';
+        
+        $hoy = date('m-d');
+        $f_nac = $c['fecha_nacimiento'] ? date('m-d', strtotime($c['fecha_nacimiento'])) : '';
+        $es_cumple_fila = ($hoy == $f_nac) ? '1' : '0';
+    ?>
+    <tr class="cliente-row" data-es-deudor="<?php echo $esDeudor; ?>" data-cumple="<?php echo $es_cumple_fila; ?>">
+        <td data-label="Cliente" class="ps-4">
+            <div class="d-flex align-items-center">
+                <div class="avatar-circle me-3 bg-primary bg-opacity-10 text-primary">
+                    <?php echo strtoupper(substr($c['nombre'], 0, 2)); ?>
+                </div>
+                <div>
+                    <div class="fw-bold text-dark"><?php echo $c['nombre']; ?></div>
+                    <small class="text-muted">ID #<?php echo $c['id']; ?></small>
+                </div>
+            </div>
+        </td>
+        
+        <td data-label="Identidad">
+            <div class="small fw-bold text-dark"><?php echo $c['dni'] ?: '--'; ?></div>
+            <span class="badge bg-light text-primary border">@<?php echo $c['usuario'] ?: 'sin_usuario'; ?></span>
+        </td>
 
-                <td data-label="Contacto">
-                    <?php if($c['telefono']): ?>
-                        <a href="https://wa.me/<?php echo $c['telefono']; ?>" target="_blank" class="text-decoration-none text-success fw-bold small">
-                            <i class="bi bi-whatsapp me-1"></i> <?php echo $c['telefono']; ?>
-                        </a>
-                    <?php else: ?>
-                        <span class="text-muted small">Sin teléfono</span>
-                    <?php endif; ?>
-                </td>
+        <td data-label="Contacto">
+            <?php if($c['telefono']): ?>
+                <a href="https://wa.me/<?php echo $c['telefono']; ?>" target="_blank" class="text-decoration-none text-success fw-bold small">
+                    <i class="bi bi-whatsapp me-1"></i> <?php echo $c['telefono']; ?>
+                </a>
+            <?php else: ?>
+                <span class="text-muted small">---</span>
+            <?php endif; ?>
+        </td>
 
-                <td data-label="Cumpleaños">
-                    <div class="small <?php echo $es_cumple_fila ? 'fw-bold text-danger' : ''; ?>">
-                        <i class="bi <?php echo $es_cumple_fila ? 'bi-cake2-fill' : 'bi-calendar-event'; ?> me-1"></i>
-                        <?php echo $c['fecha_nacimiento'] ? date('d/m', strtotime($c['fecha_nacimiento'])) : '--/--'; ?>
-                    </div>
-                </td>
+        <td data-label="Cumpleaños">
+            <div class="small <?php echo $es_cumple_fila ? 'fw-bold text-danger' : ''; ?>">
+                <i class="bi <?php echo $es_cumple_fila ? 'bi-cake2-fill' : 'bi-calendar-event'; ?> me-1"></i>
+                <?php echo $c['fecha_nacimiento'] ? date('d/m', strtotime($c['fecha_nacimiento'])) : '--/--'; ?>
+            </div>
+        </td>
 
-                <td data-label="Puntos">
-                    <span class="badge bg-warning bg-opacity-10 text-dark fw-bold">
-                        <i class="bi bi-star-fill text-warning me-1"></i> <?php echo number_format($c['puntos_acumulados'], 0); ?>
-                    </span>
-                </td>
+        <td data-label="Puntos">
+            <span class="badge bg-warning bg-opacity-10 text-dark fw-bold">
+                <i class="bi bi-star-fill text-warning me-1"></i> <?php echo number_format($c['puntos_acumulados'], 0); ?>
+            </span>
+        </td>
 
-                <td data-label="Estado">
-                    <div class="small">
-                        <div class="<?php echo $deuda > 0 ? 'text-danger fw-bold' : 'text-success'; ?>">
-                            Debe: $<?php echo number_format($deuda, 0, ',', '.'); ?>
-                        </div>
-                        <div class="text-muted" style="font-size: 0.7rem;">
-                            Límite: $<?php echo number_format($limite, 0, ',', '.'); ?> | Disp: $<?php echo number_format($disponible, 0, ',', '.'); ?>
-                        </div>
-                    </div>
-                </td>
+        <td data-label="Crédito/Deuda">
+            <div class="small">
+                <div class="<?php echo $deuda > 0 ? 'text-danger fw-bold' : 'text-success'; ?>">
+                    Debe: $<?php echo number_format($deuda, 0, ',', '.'); ?>
+                </div>
+                <div class="text-muted" style="font-size: 0.7rem;">
+                    Disponible: $<?php echo number_format($disponible, 0, ',', '.'); ?>
+                </div>
+            </div>
+        </td>
 
-                <td data-label="Última Venta">
-                    <div class="small text-muted">
-                        <i class="bi bi-clock-history me-1"></i>
-                        <?php echo $c['ultima_venta_fecha'] ? date('d/m/y', strtotime($c['ultima_venta_fecha'])) : 'Sin compras'; ?>
-                    </div>
-                </td>
+        <td data-label="Última Compra">
+            <div class="small text-muted">
+                <?php echo $c['ultima_venta_fecha'] ? date('d/m/y', strtotime($c['ultima_venta_fecha'])) : 'Sin compras'; ?>
+            </div>
+        </td>
 
-                <td class="text-end pe-4">
-                    <div class="d-flex justify-content-end">
-                        <button class="btn-action btn-eye" onclick="verResumen(<?php echo $c['id']; ?>)"><i class="bi bi-eye"></i></button>
-                        <a href="cuenta_cliente.php?id=<?php echo $c['id']; ?>" class="btn-action btn-wallet"><i class="bi bi-wallet2"></i></a>
-                        <button class="btn-action btn-edit" onclick="editar(<?php echo $c['id']; ?>)"><i class="bi bi-pencil"></i></button>
-                    </div>
-                </td>
-            </tr>
-            <?php endforeach; ?>
-        </tbody>
+        <td class="text-end pe-4">
+            <div class="d-flex justify-content-end">
+                <button class="btn-action btn-eye" onclick="verResumen(<?php echo $c['id']; ?>)" title="Resumen"><i class="bi bi-eye"></i></button>
+                <a href="cuenta_cliente.php?id=<?php echo $c['id']; ?>" class="btn-action btn-wallet" title="Historial"><i class="bi bi-wallet2"></i></a>
+                <button class="btn-action btn-edit" onclick="editar(<?php echo $c['id']; ?>)" title="Editar"><i class="bi bi-pencil"></i></button>
+                <button class="btn-action btn-del" onclick="borrarCliente(<?php echo $c['id']; ?>)" title="Eliminar"><i class="bi bi-trash"></i></button>
+            </div>
+        </td>
+    </tr>
+    <?php endforeach; ?>
+</tbody>
     </table>
 </div>
     </div>
@@ -323,11 +326,9 @@ document.getElementById('titulo-modal').innerText = "Editar Cliente"; $('#modalG
     }); 
 }
     function filtrarClientes() { let val = $('#buscador').val().toUpperCase(); $('.cliente-row').each(function() { $(this).toggle($(this).text().toUpperCase().indexOf(val) > -1); }); }
-    function borrarCliente(id) { Swal.fire({ title: '¿Eliminar?', text: "No se recuperará.", icon: 'warning', showCancelButton: true }).then((r) => { if (r.isConfirmed) window.location.href = 'clientes.php?borrar=' + id; }); }
+    function borrarCliente(id) { Swal.fire({ title: '¿Eliminar?', text: "No se recuperará.", icon: 'warning', showCancelButton: true }).then((r) => { if (r.isConfirmed) window.location.href = 'clientes.php?borrar=' + id + '&token=<?php echo $_SESSION['csrf_token']; ?>'; }); }
 
-    <?php if(isset($_GET['msg']) && $_GET['msg'] == 'pass_ok'): ?> Swal.fire('Éxito', 'Clave reseteada al DNI.', 'success'); <?php endif; ?>
-    <?php if(isset($_GET['msg']) && $_GET['msg'] == 'eliminado'): ?> Swal.fire('Eliminado', '', 'success'); <?php endif; ?>
-    <?php if(isset($_GET['error']) && $_GET['error'] == 'tiene_datos'): ?> Swal.fire('Atención', 'No se puede borrar: tiene deudas o ventas.', 'warning'); <?php endif; ?>
+    
     // Autofiltrado desde Dashboard
     $(document).ready(function() {
         const urlParams = new URLSearchParams(window.location.search);

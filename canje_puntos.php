@@ -1,5 +1,5 @@
 <?php
-// canje_puntos.php - VERSIÓN FINAL (Doble Columna: Buscador + Top Clientes)
+// canje_puntos.php - VERSIÓN FINAL CORREGIDA (LIMPIA DE ERRORES Y DUPLICADOS)
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
@@ -10,28 +10,50 @@ foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; bre
 
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
+// VERIFICAR CAJA ABIERTA (Necesaria para registrar el gasto del canje)
+// VERIFICAR CAJA ABIERTA (Necesaria para registrar el gasto)
+$stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
+$stmtCaja->execute([$_SESSION['usuario_id']]);
+$caja = $stmtCaja->fetch(PDO::FETCH_ASSOC);
+$id_caja_sesion = $caja ? $caja['id'] : 0;
+if($caja) {
+    $id_caja_sesion = is_array($caja) ? $caja['id'] : $caja->id;
+}
+
 $mensaje_sweet = '';
 $resultados_busqueda = [];
 $cliente_seleccionado = null;
 
+// --- NUEVA LÓGICA: GUARDAR REGLA DE PUNTOS ---
+if (isset($_POST['guardar_regla'])) {
+    $monto_base = floatval($_POST['monto_base']);
+    $puntos_otorgados = floatval($_POST['puntos_otorgados']);
+    
+    if ($monto_base > 0 && $puntos_otorgados > 0) {
+        $ratio = $monto_base / $puntos_otorgados;
+        $sqlRegla = "UPDATE configuracion SET dinero_por_punto = ? WHERE id = 1";
+        $conexion->prepare($sqlRegla)->execute([$ratio]);
+        $mensaje_sweet = "Swal.fire('Configuración Guardada', 'Ahora cada $$monto_base los clientes sumarán $puntos_otorgados puntos.', 'success');";
+    }
+}
+
 // --- DATOS PARA WIDGETS ---
-// 1. Total Premios
 $stmtW1 = $conexion->query("SELECT COUNT(*) FROM premios WHERE activo = 1");
 $totalPremios = $stmtW1->fetchColumn();
 
-// 2. Canjes Hoy
 $stmtW2 = $conexion->query("SELECT COUNT(*) FROM auditoria WHERE accion = 'CANJE' AND DATE(fecha) = CURDATE()");
 $canjesHoy = $stmtW2->fetchColumn();
 
-// 3. Puntos Circulantes
 $stmtW3 = $conexion->query("SELECT SUM(puntos_acumulados) FROM clientes");
 $puntosTotales = $stmtW3->fetchColumn() ?: 0;
 
-// 4. TOP 10 CLIENTES CON MÁS PUNTOS (Para la columna derecha)
 $topClientes = $conexion->query("SELECT * FROM clientes WHERE puntos_acumulados > 0 ORDER BY puntos_acumulados DESC LIMIT 10")->fetchAll(PDO::FETCH_ASSOC);
 
+// OBTENER CONFIGURACIÓN ACTUAL
+$conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+$ratio_actual = $conf['dinero_por_punto'] ?? 100;
 
-// 2. LÓGICA DE BÚSQUEDA CLÁSICA
+// 2. LÓGICA DE BÚSQUEDA
 if (isset($_GET['q']) && !empty($_GET['q'])) {
     $q = trim($_GET['q']);
     $term = "%$q%";
@@ -48,7 +70,7 @@ if (isset($_GET['id_cliente'])) {
     $cliente_seleccionado = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-// 4. PROCESAR CANJE
+// 4. PROCESAR CANJE (VERSION BLINDADA CON TUS TABLAS REALES)
 if (isset($_POST['canjear']) && $cliente_seleccionado) {
     $id_cliente = $_POST['id_cliente'];
     $id_premio = $_POST['id_premio'];
@@ -62,7 +84,7 @@ if (isset($_POST['canjear']) && $cliente_seleccionado) {
         
         $stmtP = $conexion->prepare("SELECT * FROM premios WHERE id = ?");
         $stmtP->execute([$id_premio]);
-        $premio = $stmtP->fetch(PDO::FETCH_ASSOC);
+        $premio = $stmtP->fetch(PDO::FETCH_ASSOC); // FORZAMOS ARRAY PARA EVITAR ERRORES
         
         if ($pts_actuales >= $premio['puntos_necesarios']) {
             $nuevo_saldo = $pts_actuales - $premio['puntos_necesarios'];
@@ -73,6 +95,43 @@ if (isset($_POST['canjear']) && $cliente_seleccionado) {
                 $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor + ? WHERE id = ?")->execute([$monto, $id_cliente]);
                 $txt_log = "Canje Cupón $$monto";
             } else {
+                $costo_gasto = 0; 
+
+                // A. PRODUCTO INDIVIDUAL
+                if ($premio['tipo_articulo'] == 'producto' && !empty($premio['id_articulo'])) {
+                    $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - 1 WHERE id = ?")->execute([$premio['id_articulo']]);
+                    
+                    $stmtCosto = $conexion->prepare("SELECT precio_costo FROM productos WHERE id = ?");
+                    $stmtCosto->execute([$premio['id_articulo']]);
+                    $costo_gasto = $stmtCosto->fetchColumn();
+
+                } 
+                // B. COMBO (CORREGIDO: Usando tu tabla COMBO_ITEMS)
+                elseif ($premio['tipo_articulo'] == 'combo' && !empty($premio['id_articulo'])) {
+                    $stmtItems = $conexion->prepare("SELECT ci.id_producto, ci.cantidad, p.precio_costo 
+                                                     FROM combo_items ci 
+                                                     JOIN productos p ON ci.id_producto = p.id 
+                                                     WHERE ci.id_combo = ?");
+                    $stmtItems->execute([$premio['id_articulo']]);
+                    $items_combo = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
+
+                    foreach($items_combo as $item) {
+                        // Descontamos del stock real de cada ingrediente
+                        $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")
+                                 ->execute([$item['cantidad'], $item['id_producto']]);
+                        
+                        // Sumamos el costo real
+                        $costo_gasto += ($item['precio_costo'] * $item['cantidad']);
+                    }
+                }
+
+                // REGISTRAR GASTO (Si hay costo y caja abierta)
+                if ($costo_gasto > 0 && $id_caja_sesion > 0) {
+                    $desc_gasto = "Costo Canje Fidelización: " . $premio['nombre'] . " (Cliente #$id_cliente)";
+                    $conexion->prepare("INSERT INTO gastos (descripcion, monto, categoria, fecha, id_usuario, id_caja_sesion) VALUES (?, ?, 'Fidelizacion', NOW(), ?, ?)")
+                             ->execute([$desc_gasto, $costo_gasto, $_SESSION['usuario_id'], $id_caja_sesion]);
+                }
+
                 $conexion->prepare("UPDATE premios SET stock = stock - 1 WHERE id = ?")->execute([$id_premio]);
                 $txt_log = "Canje Producto: " . $premio['nombre'];
             }
@@ -84,11 +143,9 @@ if (isset($_POST['canjear']) && $cliente_seleccionado) {
             $conexion->commit();
             header("Location: canje_puntos.php?id_cliente=$id_cliente&exito=1");
             exit;
-        } else {
-            throw new Exception("Puntos insuficientes.");
-        }
+        } else { throw new Exception("Puntos insuficientes."); }
     } catch (Exception $e) {
-        $conexion->rollBack();
+        if($conexion->inTransaction()) $conexion->rollBack();
         $mensaje_sweet = "Swal.fire('Error', '".$e->getMessage()."', 'error');";
     }
 }
@@ -99,52 +156,12 @@ $premios = $conexion->query("SELECT * FROM premios WHERE activo = 1 ORDER BY pun
 <?php include 'includes/layout_header.php'; ?>
 
 <style>
-    /* BANNER AZUL ESTANDARIZADO */
-    .header-blue {
-        background-color: #102A57;
-        color: white;
-        padding: 40px 0;
-        margin-bottom: 30px;
-        border-radius: 0 0 30px 30px;
-        box-shadow: 0 4px 15px rgba(16, 42, 87, 0.25);
-        position: relative;
-        overflow: hidden;
-    }
-    .bg-icon-large {
-        position: absolute; top: 50%; right: 20px;
-        transform: translateY(-50%) rotate(-10deg);
-        font-size: 10rem; opacity: 0.1; color: white; pointer-events: none;
-    }
-    .stat-card {
-        border: none; border-radius: 15px; padding: 15px 20px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.05); transition: transform 0.2s;
-        background: white; height: 100%; display: flex; align-items: center; justify-content: space-between;
-    }
-    .stat-card:hover { transform: translateY(-3px); }
-    .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
-
-    /* ESTILOS PROPIOS DE CANJE */
-    .search-container { position: relative; }
-    .suggestions-list {
-        position: absolute; top: 100%; left: 0; right: 0; z-index: 1000;
-        background: white; border: 1px solid #ddd; border-radius: 0 0 15px 15px;
-        box-shadow: 0 10px 20px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; display: none;
-    }
-    .suggestion-item {
-        padding: 12px 15px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; justify-content: space-between; align-items: center;
-    }
-    .suggestion-item:hover { background-color: #f8f9fa; }
-    
-    .client-card-header { background: #102A57; color: white; padding: 20px; border-radius: 15px 15px 0 0; }
+    .header-blue { background-color: #102A57; color: white; padding: 40px 0; margin-bottom: 30px; border-radius: 0 0 30px 30px; position: relative; overflow: hidden; }
+    .bg-icon-large { position: absolute; top: 50%; right: 20px; transform: translateY(-50%) rotate(-10deg); font-size: 10rem; opacity: 0.1; color: white; pointer-events: none; }
+    .stat-card { border: none; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); background: white; height: 100%; display: flex; align-items: center; justify-content: space-between; }
     .prize-card { transition: all 0.3s; border: 0; border-radius: 15px; box-shadow: 0 4px 15px rgba(0,0,0,0.05); overflow:hidden; }
-    .prize-card:hover { transform: translateY(-5px); box-shadow: 0 10px 25px rgba(0,0,0,0.1); }
-    .prize-card.disabled { opacity: 0.6; filter: grayscale(1); }
-    
-    .prize-icon-box { height: 100px; display: flex; align-items: center; justify-content: center; background: #f8f9fa; margin-bottom: 15px; }
-    
-    /* Estilos Tabla Top */
-    .table-top tr { cursor: pointer; transition: 0.2s; }
-    .table-top tr:hover { background-color: #f1f8ff; }
+    .prize-card:hover { transform: translateY(-5px); }
+    .client-card-header { background: #102A57; color: white; padding: 20px; border-radius: 15px 15px 0 0; }
 </style>
 
 <div class="header-blue">
@@ -152,44 +169,35 @@ $premios = $conexion->query("SELECT * FROM premios WHERE activo = 1 ORDER BY pun
     <div class="container position-relative">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <div>
-                <h2 class="fw-bold mb-0">Centro de Canjes</h2>
-                <p class="opacity-75 mb-0">Fidelización y recompensas</p>
+                <h2 class="fw-bold mb-0">Centro de Fidelización</h2>
+                <p class="opacity-75 mb-0">Configura y gestiona las recompensas de tus clientes</p>
             </div>
-            <div>
-                <?php if($cliente_seleccionado): ?>
-                    <a href="canje_puntos.php" class="btn btn-outline-light rounded-pill fw-bold btn-sm">
-                        <i class="bi bi-arrow-left me-1"></i> Cambiar Cliente
-                    </a>
-                <?php endif; ?>
-            </div>
+            <?php if(!$cliente_seleccionado): ?>
+                <button class="btn btn-warning fw-bold rounded-pill shadow" data-bs-toggle="modal" data-bs-target="#modalRegla">
+                    <i class="bi bi-gear-fill me-2"></i> REGLA DE PUNTOS
+                </button>
+            <?php else: ?>
+                <a href="canje_puntos.php" class="btn btn-outline-light rounded-pill fw-bold"><i class="bi bi-arrow-left"></i> Volver</a>
+            <?php endif; ?>
         </div>
 
         <div class="row g-3">
-            <div class="col-12 col-md-4">
+            <div class="col-md-4">
                 <div class="stat-card">
-                    <div>
-                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Premios Activos</h6>
-                        <h2 class="mb-0 fw-bold text-dark"><?php echo $totalPremios; ?></h2>
-                    </div>
-                    <div class="icon-box bg-primary bg-opacity-10 text-primary"><i class="bi bi-award"></i></div>
+                    <div><small class="text-muted fw-bold d-block">PREMIOS</small><h2 class="mb-0 fw-bold"><?php echo $totalPremios; ?></h2></div>
+                    <i class="bi bi-award fs-1 text-primary opacity-25"></i>
                 </div>
             </div>
-            <div class="col-12 col-md-4">
+            <div class="col-md-4">
                 <div class="stat-card">
-                    <div>
-                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Canjes Hoy</h6>
-                        <h2 class="mb-0 fw-bold text-success"><?php echo $canjesHoy; ?></h2>
-                    </div>
-                    <div class="icon-box bg-success bg-opacity-10 text-success"><i class="bi bi-check-circle"></i></div>
+                    <div><small class="text-muted fw-bold d-block">CANJES HOY</small><h2 class="mb-0 fw-bold text-success"><?php echo $canjesHoy; ?></h2></div>
+                    <i class="bi bi-check-circle fs-1 text-success opacity-25"></i>
                 </div>
             </div>
-            <div class="col-12 col-md-4">
-                <div class="stat-card" title="Total de puntos en poder de clientes">
-                    <div>
-                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Puntos Circulantes</h6>
-                        <h2 class="mb-0 fw-bold text-warning"><?php echo number_format($puntosTotales, 0, ',', '.'); ?></h2>
-                    </div>
-                    <div class="icon-box bg-warning bg-opacity-10 text-warning"><i class="bi bi-stars"></i></div>
+            <div class="col-md-4">
+                <div class="stat-card">
+                    <div><small class="text-muted fw-bold d-block">VALOR DE 1 PUNTO</small><h2 class="mb-0 fw-bold text-warning">$<?php echo number_format($ratio_actual, 2); ?></h2></div>
+                    <i class="bi bi-currency-dollar fs-1 text-warning opacity-25"></i>
                 </div>
             </div>
         </div>
@@ -197,174 +205,86 @@ $premios = $conexion->query("SELECT * FROM premios WHERE activo = 1 ORDER BY pun
 </div>
 
 <div class="container pb-5">
-    
     <?php if (!$cliente_seleccionado): ?>
-        
         <div class="row g-4">
-            
             <div class="col-lg-6">
                 <div class="card border-0 shadow-lg p-4 rounded-4 h-100">
                     <div class="text-center mb-4">
-                        <div class="mb-3 text-primary"><i class="bi bi-search display-1"></i></div>
+                        <i class="bi bi-person-search display-4 text-primary"></i>
                         <h4 class="fw-bold">Buscar Cliente</h4>
-                        <p class="text-muted small">Ingresa nombre o DNI para ver premios disponibles</p>
                     </div>
-                    
-                    <form method="GET" action="canje_puntos.php" autocomplete="off" class="position-relative">
-                        <div class="search-container">
-                            <div class="input-group input-group-lg">
-                                <span class="input-group-text bg-white border-end-0"><i class="bi bi-person"></i></span>
-                                <input type="text" id="buscador" name="q" class="form-control border-start-0" 
-                                       placeholder="Escribe aquí..." value="<?php echo $_GET['q'] ?? ''; ?>" autofocus>
-                            </div>
-                            <div id="sugerencias" class="suggestions-list"></div>
-                        </div>
-                        <div class="d-grid mt-4">
-                            <button type="submit" class="btn btn-primary btn-lg fw-bold rounded-pill">BUSCAR AHORA</button>
+                    <form method="GET">
+                        <div class="input-group input-group-lg">
+                            <input type="text" name="q" class="form-control" placeholder="Nombre o DNI..." value="<?php echo $_GET['q'] ?? ''; ?>" autofocus>
+                            <button class="btn btn-primary px-4"><i class="bi bi-search"></i></button>
                         </div>
                     </form>
 
                     <?php if (!empty($resultados_busqueda)): ?>
-                        <div class="card border-0 shadow-sm mt-4 rounded-4 overflow-hidden">
-                            <div class="card-header bg-white fw-bold py-3">Resultados:</div>
-                            <div class="list-group list-group-flush">
-                                <?php foreach ($resultados_busqueda as $cli): ?>
-                                    <a href="canje_puntos.php?id_cliente=<?php echo $cli['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center p-3">
-                                        <div>
-                                            <div class="fw-bold text-dark"><?php echo $cli['nombre']; ?></div>
-                                            <small class="text-muted">DNI: <?php echo $cli['dni']; ?></small>
-                                        </div>
-                                        <span class="badge bg-warning text-dark rounded-pill shadow-sm px-3 py-2">
-                                            <i class="bi bi-star-fill"></i> <?php echo $cli['puntos_acumulados']; ?> pts
-                                        </span>
-                                    </a>
-                                <?php endforeach; ?>
-                            </div>
+                        <div class="list-group mt-4">
+                            <?php foreach ($resultados_busqueda as $cli): ?>
+                                <a href="canje_puntos.php?id_cliente=<?php echo $cli['id']; ?>" class="list-group-item list-group-item-action d-flex justify-content-between align-items-center">
+                                    <div><div class="fw-bold"><?php echo $cli['nombre']; ?></div><small>DNI: <?php echo $cli['dni']; ?></small></div>
+                                    <span class="badge bg-warning text-dark rounded-pill"><?php echo $cli['puntos_acumulados']; ?> pts</span>
+                                </a>
+                            <?php endforeach; ?>
                         </div>
                     <?php endif; ?>
                 </div>
             </div>
 
             <div class="col-lg-6">
-                <div class="card border-0 shadow-sm h-100 rounded-4 overflow-hidden">
-                    <div class="card-header bg-white py-3 border-bottom d-flex justify-content-between align-items-center">
-                        <h6 class="m-0 fw-bold text-uppercase"><i class="bi bi-trophy text-warning me-2"></i> Top Clientes (Puntos)</h6>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-top table-hover align-middle mb-0">
-                                <thead class="table-light small text-muted text-uppercase">
-                                    <tr>
-                                        <th class="ps-4">Cliente</th>
-                                        <th class="text-end pe-4">Puntos Acumulados</th>
+                <div class="card border-0 shadow-sm h-100 rounded-4">
+                    <div class="card-header bg-white py-3 fw-bold"><i class="bi bi-trophy text-warning me-2"></i> Ranking de Puntos</div>
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <tbody>
+                                <?php foreach($topClientes as $tc): ?>
+                                    <tr onclick="window.location.href='canje_puntos.php?id_cliente=<?php echo $tc['id']; ?>'" style="cursor:pointer">
+                                        <td class="ps-4"><b><?php echo $tc['nombre']; ?></b></td>
+                                        <td class="text-end pe-4"><span class="badge bg-warning text-dark"><?php echo $tc['puntos_acumulados']; ?> pts</span></td>
                                     </tr>
-                                </thead>
-                                <tbody>
-                                    <?php if(count($topClientes) > 0): ?>
-                                        <?php foreach($topClientes as $tc): ?>
-                                            <tr onclick="window.location.href='canje_puntos.php?id_cliente=<?php echo $tc['id']; ?>'">
-                                                <td class="ps-4">
-                                                    <div class="fw-bold text-dark"><?php echo $tc['nombre']; ?></div>
-                                                    <small class="text-muted">DNI: <?php echo $tc['dni']; ?></small>
-                                                </td>
-                                                <td class="text-end pe-4">
-                                                    <span class="badge bg-warning text-dark rounded-pill shadow-sm px-3">
-                                                        <i class="bi bi-star-fill"></i> <?php echo number_format($tc['puntos_acumulados']); ?>
-                                                    </span>
-                                                </td>
-                                            </tr>
-                                        <?php endforeach; ?>
-                                    <?php else: ?>
-                                        <tr><td colspan="2" class="text-center py-4 text-muted">Aún no hay clientes con puntos.</td></tr>
-                                    <?php endif; ?>
-                                </tbody>
-                            </table>
-                        </div>
+                                <?php endforeach; ?>
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </div>
-
         </div>
-
     <?php else: ?>
-        
         <div class="row g-4">
             <div class="col-lg-4">
-                <div class="card border-0 shadow h-100 rounded-4 overflow-hidden sticky-top" style="top: 20px; z-index: 1;">
+                <div class="card border-0 shadow rounded-4 overflow-hidden">
                     <div class="client-card-header text-center pb-5">
-                        <div class="display-1 mb-2"><i class="bi bi-person-circle"></i></div>
-                        <h4 class="fw-bold m-0"><?php echo $cliente_seleccionado['nombre']; ?></h4>
-                        <small class="opacity-75">DNI: <?php echo $cliente_seleccionado['dni'] ?: '--'; ?></small>
+                        <i class="bi bi-person-circle display-1"></i>
+                        <h4 class="fw-bold"><?php echo $cliente_seleccionado['nombre']; ?></h4>
                     </div>
                     <div class="card-body text-center" style="margin-top: -40px;">
-                        <div class="card border-0 shadow-sm mx-3 mb-4 rounded-4">
+                        <div class="card border-0 shadow-sm mb-4 rounded-4">
                             <div class="card-body py-4">
-                                <small class="text-uppercase fw-bold text-muted">Puntos Disponibles</small>
-                                <div class="display-4 fw-bold text-warning" style="text-shadow: 1px 1px 0px rgba(0,0,0,0.2);">
-                                    <?php echo number_format($cliente_seleccionado['puntos_acumulados']); ?>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="px-3">
-                            <div class="d-flex justify-content-between border-bottom py-2">
-                                <span class="text-muted">Saldo a Favor</span>
-                                <span class="fw-bold text-success">$<?php echo $cliente_seleccionado['saldo_favor']; ?></span>
-                            </div>
-                            <div class="d-flex justify-content-between border-bottom py-2">
-                                <span class="text-muted">Deuda Actual</span>
-                                <span class="fw-bold text-danger">$<?php echo $cliente_seleccionado['saldo_deudor'] ?? 0; ?></span>
+                                <small class="fw-bold text-muted">PUNTOS DISPONIBLES</small>
+                                <div class="display-4 fw-bold text-warning"><?php echo number_format($cliente_seleccionado['puntos_acumulados']); ?></div>
                             </div>
                         </div>
                     </div>
                 </div>
             </div>
-
             <div class="col-lg-8">
-                <h5 class="fw-bold mb-3 d-flex align-items-center">
-                    <span class="bg-warning text-dark rounded-circle d-flex align-items-center justify-content-center me-2" style="width: 30px; height: 30px;"><i class="bi bi-trophy-fill"></i></span>
-                    Premios Disponibles
-                </h5>
-                <div class="row row-cols-1 row-cols-md-2 row-cols-xl-3 g-3">
+                <div class="row row-cols-1 row-cols-md-3 g-3">
                     <?php foreach($premios as $p): 
-                        $pts = $cliente_seleccionado['puntos_acumulados'];
-                        $req = $p['puntos_necesarios'];
-                        $alcanza = $pts >= $req;
+                        $alcanza = $cliente_seleccionado['puntos_acumulados'] >= $p['puntos_necesarios'];
                     ?>
                     <div class="col">
-                        <div class="card prize-card h-100 <?php echo $alcanza ? 'border-2 border-success' : 'disabled bg-light'; ?>">
-                            <div class="prize-icon-box">
-                                <?php if($p['es_cupon']): ?>
-                                    <i class="bi bi-ticket-perforated display-4 text-success"></i>
+                        <div class="card prize-card h-100 <?php echo $alcanza ? 'border-success' : 'opacity-50 grayscale'; ?>">
+                            <div class="card-body text-center d-flex flex-column">
+                                <i class="bi <?php echo $p['es_cupon'] ? 'bi-ticket-perforated' : 'bi-gift'; ?> display-5 text-primary mb-3"></i>
+                                <h6 class="fw-bold"><?php echo $p['nombre']; ?></h6>
+                                <h4 class="fw-bold text-success mt-auto"><?php echo $p['puntos_necesarios']; ?> pts</h4>
+                                <?php if($alcanza): ?>
+                                    <button onclick="canjear(<?php echo $p['id']; ?>, '<?php echo $p['nombre']; ?>', <?php echo $p['puntos_necesarios']; ?>)" class="btn btn-success rounded-pill fw-bold mt-3">CANJEAR</button>
                                 <?php else: ?>
-                                    <i class="bi bi-gift display-4 text-primary"></i>
+                                    <span class="badge bg-danger mt-3">Te faltan <?php echo $p['puntos_necesarios'] - $cliente_seleccionado['puntos_acumulados']; ?> pts</span>
                                 <?php endif; ?>
-                            </div>
-                            <div class="card-body text-center d-flex flex-column pt-0">
-                                <h6 class="card-title fw-bold text-dark mb-1"><?php echo $p['nombre']; ?></h6>
-                                
-                                <?php if($p['es_cupon']): ?>
-                                    <span class="badge bg-success bg-opacity-10 text-success mb-3 align-self-center">+$<?php echo $p['monto_dinero']; ?> en Crédito</span>
-                                <?php else: ?>
-                                    <span class="text-muted small mb-3">Stock: <?php echo $p['stock']; ?></span>
-                                <?php endif; ?>
-                                
-                                <div class="mt-auto">
-                                    <div class="fw-bold fs-4 <?php echo $alcanza ? 'text-success' : 'text-danger'; ?>">
-                                        <?php echo $req; ?> <small class="fs-6">pts</small>
-                                    </div>
-                                    
-                                    <?php if($alcanza): ?>
-                                        <button onclick="canjear(<?php echo $p['id']; ?>, '<?php echo $p['nombre']; ?>', <?php echo $req; ?>)" class="btn btn-success w-100 mt-2 fw-bold shadow-sm rounded-pill">
-                                            CANJEAR
-                                        </button>
-                                    <?php else: ?>
-                                        <div class="progress mt-2" style="height: 6px;">
-                                            <div class="progress-bar bg-warning" style="width: <?php echo ($pts/$req)*100; ?>%"></div>
-                                        </div>
-                                        <small class="text-muted fw-bold d-block mt-1">Faltan <?php echo $req - $pts; ?> pts</small>
-                                    <?php endif; ?>
-                                </div>
                             </div>
                         </div>
                     </div>
@@ -372,81 +292,70 @@ $premios = $conexion->query("SELECT * FROM premios WHERE activo = 1 ORDER BY pun
                 </div>
             </div>
         </div>
-        
-        <form id="formCanje" method="POST"><input type="hidden" name="canjear" value="1"><input type="hidden" name="id_cliente" value="<?php echo $cliente_seleccionado['id']; ?>"><input type="hidden" name="id_premio" id="inputPremio"></form>
-
     <?php endif; ?>
 </div>
 
+<div class="modal fade" id="modalRegla" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <form method="POST" class="modal-content border-0 shadow-lg">
+            <div class="modal-header bg-dark text-white">
+                <h5 class="modal-title fw-bold"><i class="bi bi-stars"></i> Regla de Acumulación</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body p-4">
+                <p class="text-muted small mb-4">Define cuántos puntos sumará el cliente según el monto de su compra.</p>
+                <div class="row g-3 align-items-center">
+                    <div class="col-6">
+                        <label class="form-label fw-bold small text-muted">CADA COMPRA DE ($)</label>
+                        <div class="input-group">
+                            <span class="input-group-text">$</span>
+                            <input type="number" name="monto_base" class="form-control fw-bold" value="1000" required>
+                        </div>
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label fw-bold small text-muted">SUMARÁ (PUNTOS)</label>
+                        <div class="input-group">
+                            <input type="number" name="puntos_otorgados" class="form-control fw-bold text-center" value="5" required>
+                            <span class="input-group-text">PTS</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-4 mb-0 border-0 rounded-4 small">
+                    <i class="bi bi-info-circle-fill me-2"></i>
+                    <b>Info:</b> Si pones $1000 y 5 puntos, el sistema le dará 1 punto cada $200 gastados automáticamente.
+                </div>
+            </div>
+            <div class="modal-footer bg-light">
+                <button type="submit" name="guardar_regla" class="btn btn-primary w-100 fw-bold py-2 rounded-pill">GUARDAR NUEVA REGLA</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<form id="formCanje" method="POST">
+    <input type="hidden" name="canjear" value="1">
+    <input type="hidden" name="id_cliente" value="<?php echo $cliente_seleccionado['id'] ?? ''; ?>">
+    <input type="hidden" name="id_premio" id="p_id">
+</form>
+
 <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
 <script>
-    // ALERTAS
     <?php echo $mensaje_sweet; ?>
-    if(new URLSearchParams(window.location.search).get('exito')==='1') Swal.fire('¡Canje Exitoso!', 'Los puntos han sido descontados correctamente.', 'success');
-
-    // LÓGICA DE CANJE
-    function canjear(id, nombre, pts) {
+    if(new URLSearchParams(window.location.search).get('exito') === '1') {
+        Swal.fire('¡Canje Exitoso!', 'Los puntos han sido descontados y el premio asignado.', 'success');
+    }
+    function canjear(id, nom, pts) {
         Swal.fire({
             title: '¿Confirmar Canje?',
-            html: "Premio: <b>" + nombre + "</b><br>Costo: <b class='text-danger'>" + pts + " puntos</b>",
-            icon: 'question', 
-            showCancelButton: true, 
-            confirmButtonText: 'Sí, confirmar', 
-            cancelButtonText: 'Cancelar', 
-            confirmButtonColor: '#102A57'
-        }).then((r) => { 
-            if(r.isConfirmed) { 
-                document.getElementById('inputPremio').value = id; 
-                document.getElementById('formCanje').submit(); 
-            }
-        });
-    }
-
-    // --- LÓGICA PREDICTIVA (JS PURO) ---
-    const input = document.getElementById('buscador');
-    const lista = document.getElementById('sugerencias');
-
-    if(input){
-        input.addEventListener('input', function() {
-            const val = this.value;
-            if (val.length < 2) { lista.style.display = 'none'; return; }
-
-            // Usamos la misma lógica que en clientes para buscar
-            // (Asumiendo que buscar_cliente_ajax.php devuelve JSON con id, nombre, dni, puntos)
-            fetch('acciones/buscar_cliente_ajax.php?term=' + encodeURIComponent(val))
-                .then(r => r.json())
-                .then(data => {
-                    lista.innerHTML = '';
-                    if (data.length > 0) {
-                        lista.style.display = 'block';
-                        data.forEach(c => {
-                            const item = document.createElement('div');
-                            item.className = 'suggestion-item';
-                            item.innerHTML = `
-                                <div>
-                                    <div class="fw-bold text-dark">${c.nombre}</div>
-                                    <small class="text-muted">DNI: ${c.dni}</small>
-                                </div>
-                                <span class="badge bg-warning text-dark rounded-pill ms-2">
-                                    <i class="bi bi-star-fill"></i> ${c.puntos}
-                                </span>
-                            `;
-                            item.onclick = () => {
-                                window.location.href = 'canje_puntos.php?id_cliente=' + c.id;
-                            };
-                            lista.appendChild(item);
-                        });
-                    } else {
-                        lista.style.display = 'none';
-                    }
-                })
-                .catch(err => console.log('Error buscando clientes:', err));
-        });
-
-        // Cerrar lista si clic fuera
-        document.addEventListener('click', function(e) {
-            if (e.target !== input && e.target !== lista) {
-                lista.style.display = 'none';
+            text: `Vas a canjear ${pts} puntos por: ${nom}`,
+            icon: 'question',
+            showCancelButton: true,
+            confirmButtonText: 'Sí, Canjear',
+            cancelButtonText: 'Cancelar'
+        }).then((result) => {
+            if (result.isConfirmed) {
+                document.getElementById('p_id').value = id;
+                document.getElementById('formCanje').submit();
             }
         });
     }

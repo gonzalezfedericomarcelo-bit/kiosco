@@ -1,76 +1,78 @@
 <?php
-// configuracion.php - VERSIÓN RESTAURADA (AFIP + MÓDULOS + WHATSAPP PEDIDOS)
+// configuracion.php - VERSIÓN INTEGRAL CON WIDGETS DE ESTADO
 session_start();
-if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
-require_once 'includes/db.php';
 
-// PROCESAR GUARDADO CONFIGURACIÓN GENERAL
+// Buscador de conexión estándar
+$rutas_db = [__DIR__ . '/db.php', __DIR__ . '/includes/db.php', 'db.php', 'includes/db.php'];
+foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; break; } }
+
+if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
+
+// --- 1. PROCESAR GUARDADO CONFIGURACIÓN GENERAL ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_general'])) {
-    $nombre = $_POST['nombre_negocio'];
-    $direccion = $_POST['direccion'];
-    $telefono = $_POST['telefono']; // Teléfono general
-    $wa_pedidos = $_POST['whatsapp_pedidos']; // NUEVO: WhatsApp Pedidos
-    $cuit = $_POST['cuit'];
-    $mensaje = $_POST['mensaje_ticket'];
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("Error de seguridad: Solicitud no autorizada.");
+    }
+
+    $nombre = trim($_POST['nombre_negocio']);
+    $direccion = trim($_POST['direccion']);
+    $telefono = trim($_POST['telefono']);
+    $wa_pedidos = trim($_POST['whatsapp_pedidos']);
+    $cuit = trim($_POST['cuit']);
+    $mensaje = trim($_POST['mensaje_ticket']);
     
-    $color_nav = $_POST['color_barra_nav'];
-    $color_btn = $_POST['color_botones'];
-    $color_bg = $_POST['color_fondo'];
-    
-    $color_sec = $_POST['color_secundario'];
-    $dir_deg = $_POST['direccion_degradado'];
-    
-    // Checkboxs
     $mod_cli = isset($_POST['modulo_clientes']) ? 1 : 0;
     $mod_stk = isset($_POST['modulo_stock']) ? 1 : 0;
     $mod_rep = isset($_POST['modulo_reportes']) ? 1 : 0;
     $mod_fid = isset($_POST['modulo_fidelizacion']) ? 1 : 0;
+    // NUEVAS FUNCIONES
+    $stock_use_global = isset($_POST['stock_use_global']) ? 1 : 0;
+    $stock_global_valor = intval($_POST['stock_global_valor'] ?? 5);
+    $ticket_modo = $_POST['ticket_modo'] ?? 'afip';
+    $redondeo_auto = isset($_POST['redondeo_auto']) ? 1 : 0;
 
-    // CONFIGURACIONES GLOBALES (Vencimiento y Puntos)
-    $dias_alerta = !empty($_POST['dias_alerta_vencimiento']) ? $_POST['dias_alerta_vencimiento'] : 30;
-    $dinero_punto = !empty($_POST['dinero_por_punto']) ? $_POST['dinero_por_punto'] : 100;
+    $dias_alerta = intval($_POST['dias_alerta_vencimiento'] ?? 30);
+    $dinero_punto = floatval($_POST['dinero_por_punto'] ?? 100);
 
-    // LOGO
     $logo_url = $_POST['logo_actual']; 
     if (isset($_FILES['logo']) && $_FILES['logo']['error'] === UPLOAD_ERR_OK) {
         $nombre_archivo = 'logo_' . time() . '.png';
         $destino = 'uploads/' . $nombre_archivo;
-        // Crear carpeta si no existe
         if(!is_dir('uploads')) mkdir('uploads');
-        
         if (move_uploaded_file($_FILES['logo']['tmp_name'], $destino)) {
             $logo_url = $destino;
         }
     }
 
-    // ACTUALIZACIÓN SQL (INCLUYE whatsapp_pedidos)
-    $sql = "UPDATE configuracion SET 
+   $sql = "UPDATE configuracion SET 
             nombre_negocio=?, direccion_local=?, telefono_whatsapp=?, whatsapp_pedidos=?, cuit=?, mensaje_ticket=?, 
-            color_barra_nav=?, color_botones=?, color_fondo=?, color_secundario=?, direccion_degradado=?, 
             modulo_clientes=?, modulo_stock=?, modulo_reportes=?, modulo_fidelizacion=?, logo_url=?,
-            dias_alerta_vencimiento=?, dinero_por_punto=?
+            dias_alerta_vencimiento=?, dinero_por_punto=?,
+            stock_use_global=?, stock_global_valor=?, ticket_modo=?, redondeo_auto=?
             WHERE id=1";
-            
+
     $conexion->prepare($sql)->execute([
         $nombre, $direccion, $telefono, $wa_pedidos, $cuit, $mensaje, 
-        $color_nav, $color_btn, $color_bg, $color_sec, $dir_deg,
         $mod_cli, $mod_stk, $mod_rep, $mod_fid, $logo_url,
-        $dias_alerta, $dinero_punto
+        $dias_alerta, $dinero_punto,
+        $stock_use_global, $stock_global_valor, $ticket_modo, $redondeo_auto
     ]);
     
     header("Location: configuracion.php?msg=guardado"); exit;
 }
 
-// PROCESAR GUARDADO AFIP
+// --- 2. PROCESAR GUARDADO AFIP ---
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_afip'])) {
-    $cuit_afip = $_POST['cuit_afip'];
-    $pto_vta = $_POST['punto_venta'];
+    if (!isset($_POST['csrf_token']) || $_POST['csrf_token'] !== $_SESSION['csrf_token']) {
+        die("Error de seguridad: Solicitud no autorizada.");
+    }
+
+    $cuit_afip = trim($_POST['cuit_afip']);
+    $pto_vta = intval($_POST['punto_venta']);
     $modo = $_POST['modo_afip'];
 
-    // Subida de Certificado (.crt)
     if (isset($_FILES['cert_crt']) && $_FILES['cert_crt']['error'] === UPLOAD_ERR_OK) {
-        $ext = pathinfo($_FILES['cert_crt']['name'], PATHINFO_EXTENSION);
-        if($ext == 'crt') {
+        if(pathinfo($_FILES['cert_crt']['name'], PATHINFO_EXTENSION) == 'crt') {
             $ruta_crt = 'afip/certificado.crt';
             if(!is_dir('afip')) mkdir('afip');
             move_uploaded_file($_FILES['cert_crt']['tmp_name'], $ruta_crt);
@@ -78,10 +80,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_afip'])) {
         }
     }
 
-    // Subida de Clave (.key)
     if (isset($_FILES['cert_key']) && $_FILES['cert_key']['error'] === UPLOAD_ERR_OK) {
-        $ext = pathinfo($_FILES['cert_key']['name'], PATHINFO_EXTENSION);
-        if($ext == 'key') {
+        if(pathinfo($_FILES['cert_key']['name'], PATHINFO_EXTENSION) == 'key') {
             $ruta_key = 'afip/privada.key';
             if(!is_dir('afip')) mkdir('afip');
             move_uploaded_file($_FILES['cert_key']['tmp_name'], $ruta_key);
@@ -89,266 +89,239 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_afip'])) {
         }
     }
 
-    $sql = "UPDATE afip_config SET cuit=?, punto_venta=?, modo=? WHERE id=1";
-    $conexion->prepare($sql)->execute([$cuit_afip, $pto_vta, $modo]);
-    
-    // Resetear token para forzar reconexión
+    $conexion->prepare("UPDATE afip_config SET cuit=?, punto_venta=?, modo=? WHERE id=1")->execute([$cuit_afip, $pto_vta, $modo]);
     $conexion->query("UPDATE afip_config SET token=NULL, sign=NULL WHERE id=1");
 
     header("Location: configuracion.php?msg=afip_ok"); exit;
 }
 
+// 3. OBTENER DATOS
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-// Si no existe config de afip, la creamos vacía para evitar errores
 $afip = $conexion->query("SELECT * FROM afip_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-if(!$afip) {
-    $conexion->query("INSERT INTO afip_config (id, cuit, punto_venta, modo) VALUES (1, '', 1, 'homologacion')");
-    $afip = $conexion->query("SELECT * FROM afip_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-}
+
+include 'includes/layout_header.php'; 
 ?>
-<!DOCTYPE html>
-<html lang="es">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Configuración</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
-    <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
-    <style>
-        .color-preview { width: 100%; height: 50px; border-radius: 8px; margin-bottom: 10px; border: 1px solid #ccc; transition: 0.3s; }
-        .card-header-custom { background-color: <?php echo $conf['color_barra_nav']; ?>; color: white; font-weight: bold; }
-        .nav-tabs .nav-link.active { background-color: #f8f9fa; border-bottom-color: transparent; font-weight: bold; }
-    </style>
-</head>
-<body class="bg-light">
 
-    <?php include 'includes/menu.php'; ?>
+<style>
+    .header-blue { background-color: #102A57; color: white; padding: 40px 0; border-radius: 0 0 30px 30px; position: relative; overflow: hidden; margin-bottom: 25px; }
+    .bg-icon-large { position: absolute; top: 50%; right: 20px; transform: translateY(-50%) rotate(-10deg); font-size: 10rem; opacity: 0.1; color: white; pointer-events: none; }
+    .nav-tabs .nav-link { color: #6c757d; font-weight: 600; border: none; }
+    .nav-tabs .nav-link.active { color: #102A57; border-bottom: 3px solid #102A57; background: transparent; }
+    /* Estilo para los widgets en el banner */
+    .stat-card { border: none; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: white; height: 100%; display: flex; align-items: center; justify-content: space-between; }
+    .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
+</style>
 
-    <div class="container pb-5">
-        <h2 class="mb-4 fw-bold text-secondary"><i class="bi bi-gear-fill"></i> Configuración del Sistema</h2>
+<div class="header-blue">
+    <i class="bi bi-gear bg-icon-large"></i>
+    <div class="container position-relative">
+        <div class="d-flex justify-content-between align-items-center mb-4">
+            <div>
+                <h2 class="fw-bold mb-0">Panel de Configuración</h2>
+                <p class="opacity-75 mb-0">Ajustes generales y facturación electrónica</p>
+            </div>
+        </div>
 
-        <ul class="nav nav-tabs mb-3" id="myTab" role="tablist">
-            <li class="nav-item" role="presentation">
-                <button class="nav-link active" id="general-tab" data-bs-toggle="tab" data-bs-target="#general" type="button" role="tab">🏢 General</button>
-            </li>
-            <li class="nav-item" role="presentation">
-                <button class="nav-link" id="afip-tab" data-bs-toggle="tab" data-bs-target="#afip" type="button" role="tab">🧾 Facturación AFIP</button>
-            </li>
-        </ul>
-
-        <div class="tab-content" id="myTabContent">
-            
-            <div class="tab-pane fade show active" id="general" role="tabpanel">
-                <div class="row">
-                    <div class="col-lg-8">
-                        <div class="card shadow border-0 mb-4">
-                            <div class="card-header card-header-custom">Datos del Negocio</div>
-                            <div class="card-body">
-                                <form method="POST" enctype="multipart/form-data">
-                                    <input type="hidden" name="guardar_general" value="1">
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Nombre del Kiosco</label>
-                                            <input type="text" name="nombre_negocio" class="form-control" value="<?php echo $conf['nombre_negocio']; ?>" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">CUIT (Opcional)</label>
-                                            <input type="text" name="cuit" class="form-control" value="<?php echo $conf['cuit']; ?>">
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Dirección</label>
-                                            <input type="text" name="direccion" class="form-control" value="<?php echo $conf['direccion_local']; ?>">
-                                        </div>
-                                        
-                                        <div class="col-md-3">
-                                            <label class="form-label fw-bold">Tel. General</label>
-                                            <input type="text" name="telefono" class="form-control" value="<?php echo $conf['telefono_whatsapp']; ?>">
-                                            <div class="form-text small">Contacto general</div>
-                                        </div>
-                                        <div class="col-md-3">
-                                            <label class="form-label fw-bold text-success"><i class="bi bi-whatsapp"></i> WA Pedidos</label>
-                                            <input type="text" name="whatsapp_pedidos" class="form-control border-success" 
-                                                   value="<?php echo $conf['whatsapp_pedidos'] ?? ''; ?>" placeholder="549...">
-                                            <div class="form-text small">Para Tienda/Revista</div>
-                                        </div>
-                                        
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold">Mensaje al pie del Ticket</label>
-                                            <textarea name="mensaje_ticket" class="form-control" rows="2"><?php echo $conf['mensaje_ticket']; ?></textarea>
-                                        </div>
-                                        
-                                        <div class="col-12"><hr></div>
-                                        
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Logo del Ticket</label>
-                                            <input type="file" name="logo" class="form-control" accept="image/png, image/jpeg">
-                                            <input type="hidden" name="logo_actual" value="<?php echo $conf['logo_url']; ?>">
-                                            <?php if($conf['logo_url']): ?>
-                                                <div class="mt-2"><img src="<?php echo $conf['logo_url']; ?>" style="height: 50px;"></div>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <div class="col-md-6">
-                                            <div class="card bg-light border-0">
-                                                <div class="card-body">
-                                                    <h6 class="fw-bold mb-3">Módulos Activos</h6>
-                                                    <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" name="modulo_stock" <?php echo $conf['modulo_stock']?'checked':''; ?>>
-                                                        <label class="form-check-label">Control de Stock</label>
-                                                    </div>
-                                                    <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" name="modulo_clientes" <?php echo $conf['modulo_clientes']?'checked':''; ?>>
-                                                        <label class="form-check-label">Cuentas Corrientes (Fiado)</label>
-                                                    </div>
-                                                    <div class="form-check form-switch">
-                                                        <input class="form-check-input" type="checkbox" name="modulo_fidelizacion" <?php echo $conf['modulo_fidelizacion']?'checked':''; ?>>
-                                                        <label class="form-check-label">Puntos y Premios</label>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-12"><hr></div>
-                                        <h6 class="fw-bold text-secondary">Configuraciones Globales</h6>
-
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Valor del Punto ($)</label>
-                                            <div class="input-group">
-                                                <span class="input-group-text bg-white">$</span>
-                                                <input type="number" step="0.01" name="dinero_por_punto" class="form-control fw-bold" value="<?php echo $conf['dinero_por_punto'] ?? 100; ?>">
-                                            </div>
-                                            <small class="text-muted">Cuánto debe gastar el cliente para ganar 1 punto.</small>
-                                        </div>
-
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Alerta Vencimiento</label>
-                                            <div class="input-group">
-                                                <input type="number" name="dias_alerta_vencimiento" class="form-control fw-bold" value="<?php echo $conf['dias_alerta_vencimiento'] ?? 30; ?>">
-                                                <span class="input-group-text bg-white">días antes</span>
-                                            </div>
-                                        </div>
-
-                                        <div class="col-12 mt-4">
-                                            <button type="submit" class="btn btn-primary w-100 fw-bold py-3"><i class="bi bi-save"></i> GUARDAR CAMBIOS GENERALES</button>
-                                        </div>
-                                    </div>
-                                </form>
-                            </div>
-                        </div>
+        <div class="row g-3">
+            <div class="col-12 col-md-4">
+                <div class="stat-card shadow-sm">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Aviso Vencimiento</h6>
+                        <h2 class="mb-0 fw-bold text-dark">
+                            <?php echo $conf['dias_alerta_vencimiento'] ?? 30; ?> <span style="font-size: 0.9rem;">días</span>
+                        </h2>
                     </div>
-
-                    <div class="col-lg-4">
-                        <div class="card shadow border-0">
-                            <div class="card-header bg-dark text-white fw-bold">Personalización Visual</div>
-                            <div class="card-body">
-                                <form method="POST"> <div class="mb-3">
-                                        <label class="form-label small fw-bold">Barra de Navegación (Arriba)</label>
-                                        <input type="color" id="inputColorNav" name="color_barra_nav" class="form-control form-control-color w-100" value="<?php echo $conf['color_barra_nav']; ?>" form="form-principal"> <div class="alert alert-info small">Edita los colores en la sección izquierda (si estuvieran) o usa estos inputs asegurándote que estén dentro del tag form.</div>
-                                    </div>
-                                    </form>
-                                <div class="text-center text-muted small">
-                                    Para cambiar colores, edita directamente en la base de datos o mueve los inputs al formulario principal.
-                                </div>
-                            </div>
-                        </div>
+                    <div class="icon-box bg-danger bg-opacity-10 text-danger">
+                        <i class="bi bi-calendar-x"></i>
                     </div>
-                    <div class="col-md-6 mb-4">
-    <div class="card shadow-sm border-primary h-100">
-        <div class="card-body text-center d-flex flex-column justify-content-center">
-            <h5 class="card-title text-primary fw-bold">
-                <i class="bi bi-upload"></i> Importación Masiva
-            </h5>
-            <p class="card-text text-muted">
-                Subir lista de precios y productos desde Excel (CSV).
-                Actualiza stock y precios automáticamente.
-            </p>
-            <a href="importador_maestro.php" class="btn btn-primary fw-bold mt-auto">
-                IR A IMPORTAR
-            </a>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-4">
+                <div class="stat-card shadow-sm">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Modo Facturación</h6>
+                        <h2 class="mb-0 fw-bold <?php echo ($afip['modo'] == 'produccion') ? 'text-danger' : 'text-warning'; ?>" style="font-size: 1.1rem;">
+                            <?php echo ($afip['modo'] == 'produccion') ? 'MODO REAL (AFIP)' : 'MODO PRUEBAS'; ?>
+                        </h2>
+                    </div>
+                    <div class="icon-box <?php echo ($afip['modo'] == 'produccion') ? 'bg-danger' : 'bg-warning'; ?> bg-opacity-10 <?php echo ($afip['modo'] == 'produccion') ? 'text-danger' : 'text-warning'; ?>">
+                        <i class="bi bi-shield-check"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-12 col-md-4">
+                <div class="stat-card shadow-sm">
+                    <div>
+                        <h6 class="text-muted text-uppercase small fw-bold mb-1">Valor del Punto</h6>
+                        <h2 class="mb-0 fw-bold text-dark">$<?php echo number_format($conf['dinero_por_punto'], 0, ',', '.'); ?></h2>
+                    </div>
+                    <div class="icon-box bg-info bg-opacity-10 text-info">
+                        <i class="bi bi-star-fill"></i>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 </div>
-                </div>
-            </div>
 
-            <div class="tab-pane fade" id="afip" role="tabpanel">
-                <div class="row justify-content-center">
-                    <div class="col-lg-8">
-                        <div class="card shadow border-0">
-                            <div class="card-header bg-primary text-white fw-bold">
-                                <i class="bi bi-qr-code"></i> Configuración Facturación Electrónica (ARCA/AFIP)
-                            </div>
-                            <div class="card-body p-4">
-                                <div class="alert alert-warning">
-                                    <i class="bi bi-exclamation-triangle-fill"></i> <strong>Importante:</strong> Para facturar, necesitás subir tu Certificado Digital (.crt) y tu Clave Privada (.key).
+<div class="container pb-5">
+    <ul class="nav nav-tabs mb-4" id="configTab" role="tablist">
+        <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#general">🏢 General</button></li>
+        <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#afip">🧾 Facturación AFIP</button></li>
+    </ul>
+
+    <div class="tab-content">
+        <div class="tab-pane fade show active" id="general">
+            <div class="row g-4">
+                <div class="col-lg-8">
+                    <div class="card border-0 shadow-sm rounded-4 p-4">
+                        <form method="POST" enctype="multipart/form-data">
+                            <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                            <input type="hidden" name="guardar_general" value="1">
+                            <input type="hidden" name="logo_actual" value="<?php echo $conf['logo_url']; ?>">
+
+                            <div class="row g-3">
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Nombre del Negocio</label>
+                                    <input type="text" name="nombre_negocio" class="form-control" value="<?php echo $conf['nombre_negocio']; ?>" required>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">CUIT</label>
+                                    <input type="text" name="cuit" class="form-control" value="<?php echo $conf['cuit']; ?>">
+                                </div>
+                                <div class="col-12">
+                                    <label class="small fw-bold">Dirección Física</label>
+                                    <input type="text" name="direccion" class="form-control" value="<?php echo $conf['direccion_local']; ?>">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Teléfono General</label>
+                                    <input type="text" name="telefono" class="form-control" value="<?php echo $conf['telefono_whatsapp']; ?>">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold text-success">WhatsApp Pedidos (Revista)</label>
+                                    <input type="text" name="whatsapp_pedidos" class="form-control" value="<?php echo $conf['whatsapp_pedidos']; ?>">
+                                </div>
+                                <div class="col-12">
+                                    <label class="small fw-bold">Mensaje en Ticket</label>
+                                    <textarea name="mensaje_ticket" class="form-control" rows="2"><?php echo $conf['mensaje_ticket']; ?></textarea>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Valor del Punto ($)</label>
+                                    <input type="number" step="0.01" name="dinero_por_punto" class="form-control" value="<?php echo $conf['dinero_por_punto']; ?>">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Días Alerta Vencimiento</label>
+                                    <input type="number" name="dias_alerta_vencimiento" class="form-control" value="<?php echo $conf['dias_alerta_vencimiento']; ?>">
+                                </div>
+                                <div class="col-12"><hr></div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Logo del Ticket</label>
+                                    <input type="file" name="logo" class="form-control">
+                                    <?php if($conf['logo_url']): ?>
+                                        <img src="<?php echo $conf['logo_url']; ?>" class="mt-2 rounded shadow-sm" style="height: 40px;">
+                                    <?php endif; ?>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold mb-2 d-block">Módulos y Alertas</label>
+                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_stock" <?php echo $conf['modulo_stock']?'checked':''; ?>><label class="small ms-2">Módulo Stock</label></div>
+                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_clientes" <?php echo $conf['modulo_clientes']?'checked':''; ?>><label class="small ms-2">Módulo Clientes</label></div>
+                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_fidelizacion" <?php echo $conf['modulo_fidelizacion']?'checked':''; ?>><label class="small ms-2">Módulo Puntos</label></div>
+                                    <hr class="my-2">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="stock_use_global" <?php echo $conf['stock_use_global']?'checked':''; ?>>
+                                        <label class="small ms-2 fw-bold text-primary">Usar Alerta Stock Global</label>
+                                    </div>
+                                    <div class="input-group input-group-sm mt-1">
+                                        <span class="input-group-text">Avisar con:</span>
+                                        <input type="number" name="stock_global_valor" class="form-control" value="<?php echo $conf['stock_global_valor']; ?>">
+                                        <span class="input-group-text">unidades</span>
+                                    </div>
                                 </div>
 
-                                <form method="POST" enctype="multipart/form-data">
-                                    <input type="hidden" name="guardar_afip" value="1">
-                                    
-                                    <div class="row g-3">
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">CUIT del Titular</label>
-                                            <input type="text" name="cuit_afip" class="form-control form-control-lg" placeholder="Sin guiones" value="<?php echo $afip['cuit']; ?>" required>
-                                        </div>
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Punto de Venta AFIP</label>
-                                            <input type="number" name="punto_venta" class="form-control form-control-lg" placeholder="Ej: 1" value="<?php echo $afip['punto_venta']; ?>" required>
-                                            <div class="form-text">Debe estar dado de alta en AFIP como "Web Service".</div>
-                                        </div>
-
-                                        <div class="col-12">
-                                            <label class="form-label fw-bold">Modo de Facturación</label>
-                                            <select name="modo_afip" class="form-select">
-                                                <option value="homologacion" <?php echo ($afip['modo']=='homologacion')?'selected':''; ?>>🛠️ MODO PRUEBAS (Homologación)</option>
-                                                <option value="produccion" <?php echo ($afip['modo']=='produccion')?'selected':''; ?>>✅ MODO REAL (Producción - Facturas Validas)</option>
-                                            </select>
-                                        </div>
-
-                                        <div class="col-12"><hr></div>
-
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Certificado Digital (.crt)</label>
-                                            <input type="file" name="cert_crt" class="form-control" accept=".crt">
-                                            <?php if($afip['certificado_crt']): ?>
-                                                <small class="text-success fw-bold"><i class="bi bi-check-circle"></i> Cargado: <?php echo basename($afip['certificado_crt']); ?></small>
-                                            <?php else: ?>
-                                                <small class="text-danger fw-bold"><i class="bi bi-x-circle"></i> No cargado</small>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <div class="col-md-6">
-                                            <label class="form-label fw-bold">Clave Privada (.key)</label>
-                                            <input type="file" name="cert_key" class="form-control" accept=".key">
-                                            <?php if($afip['clave_key']): ?>
-                                                <small class="text-success fw-bold"><i class="bi bi-check-circle"></i> Cargado: <?php echo basename($afip['clave_key']); ?></small>
-                                            <?php else: ?>
-                                                <small class="text-danger fw-bold"><i class="bi bi-x-circle"></i> No cargada</small>
-                                            <?php endif; ?>
-                                        </div>
-
-                                        <div class="col-12 mt-4">
-                                            <button type="submit" class="btn btn-primary w-100 fw-bold py-3">
-                                                <i class="bi bi-cloud-arrow-up-fill"></i> GUARDAR DATOS AFIP
-                                            </button>
-                                        </div>
+                                <div class="col-12"><hr></div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Modo de Comprobante</label>
+                                    <select name="ticket_modo" class="form-select form-select-sm">
+                                        <option value="afip" <?php echo ($conf['ticket_modo']=='afip')?'selected':''; ?>>Factura Electrónica (AFIP)</option>
+                                        <option value="interno" <?php echo ($conf['ticket_modo']=='interno')?'selected':''; ?>>Ticket Interno (No Fiscal)</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="small fw-bold">Ajustes de Caja</label>
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" name="redondeo_auto" <?php echo $conf['redondeo_auto']?'checked':''; ?>>
+                                        <label class="small ms-2">Redondeo automático en ventas</label>
                                     </div>
-                                </form>
+                                </div>
+                                <div class="col-12 mt-4">
+                                    <button type="submit" class="btn btn-primary w-100 fw-bold py-3 rounded-pill shadow-sm">GUARDAR CONFIGURACIÓN</button>
+                                </div>
                             </div>
+                        </form>
+                    </div>
+                </div>
+                <div class="col-lg-4">
+                    <div class="card border-0 shadow-sm rounded-4 p-4 text-center">
+                        <i class="bi bi-cloud-upload text-primary fs-1 mb-3"></i>
+                        <h5 class="fw-bold">Importación Masiva</h5>
+                        <p class="text-muted small">Carga tus productos y precios desde un archivo Excel/CSV rápidamente.</p>
+                        <a href="importador_maestro.php" class="btn btn-outline-primary rounded-pill fw-bold">IR AL IMPORTADOR</a>
+                        <div class="mt-4 pt-4 border-top">
+                            <h5 class="fw-bold"><i class="bi bi-database-down"></i> Respaldo</h5>
+                            <p class="text-muted small">Descargá una copia de seguridad de toda tu base de datos (.SQL).</p>
+                            <a href="generar_backup.php" class="btn btn-dark btn-sm rounded-pill fw-bold w-100">DESCARGAR BACKUP</a>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
+
+        <div class="tab-pane fade" id="afip">
+            <div class="card border-0 shadow-sm rounded-4 p-4">
+                <form method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="<?php echo $_SESSION['csrf_token']; ?>">
+                    <input type="hidden" name="guardar_afip" value="1">
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="small fw-bold">CUIT Titular (Sin guiones)</label>
+                            <input type="text" name="cuit_afip" class="form-control" value="<?php echo $afip['cuit']; ?>" required>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small fw-bold">Punto de Venta</label>
+                            <input type="number" name="punto_venta" class="form-control" value="<?php echo $afip['punto_venta']; ?>" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="small fw-bold">Modo AFIP</label>
+                            <select name="modo_afip" class="form-select">
+                                <option value="homologacion" <?php echo ($afip['modo']=='homologacion')?'selected':''; ?>>🛠️ Homologación (Pruebas)</option>
+                                <option value="produccion" <?php echo ($afip['modo']=='produccion')?'selected':''; ?>>✅ Producción (Real)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small fw-bold">Certificado (.crt)</label>
+                            <input type="file" name="cert_crt" class="form-control" accept=".crt">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="small fw-bold">Clave (.key)</label>
+                            <input type="file" name="cert_key" class="form-control" accept=".key">
+                        </div>
+                        <div class="col-12 mt-4">
+                            <button type="submit" class="btn btn-dark w-100 fw-bold py-3 rounded-pill shadow-sm">ACTUALIZAR DATOS AFIP</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        </div>
     </div>
-    
-    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        const urlParams = new URLSearchParams(window.location.search);
-        if(urlParams.get('msg') === 'guardado') Swal.fire('Éxito', 'Configuración general guardada', 'success');
-        if(urlParams.get('msg') === 'afip_ok') Swal.fire('AFIP', 'Datos de facturación actualizados', 'success');
-    </script>
-</body>
-</html>
+</div>
+
+<?php 
+if(isset($_GET['msg'])) {
+    $m = $_GET['msg'];
+    if($m == 'guardado') echo "<script>Swal.fire('Éxito', 'Configuración guardada', 'success');</script>";
+    if($m == 'afip_ok') echo "<script>Swal.fire('AFIP', 'Datos de facturación listos', 'success');</script>";
+}
+include 'includes/layout_footer.php'; 
+?>

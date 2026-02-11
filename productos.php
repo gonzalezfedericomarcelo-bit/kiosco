@@ -4,6 +4,11 @@ session_start();
 // Ajuste de ruta de db.php
 $ruta_db = file_exists('includes/db.php') ? 'includes/db.php' : (file_exists('../includes/db.php') ? '../includes/db.php' : 'db.php');
 require_once $ruta_db;
+// 1. OBTENER CONFIGURACIÓN GLOBAL (Stock Crítico)
+$conf_global = $conexion->query("SELECT stock_use_global, stock_global_valor, dias_alerta_vencimiento FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+$dias_venc = intval($conf_global['dias_alerta_vencimiento'] ?? 30);
+$usar_global = (isset($conf_global['stock_use_global']) && $conf_global['stock_use_global'] == 1);
+$stock_critico_global = intval($conf_global['stock_global_valor'] ?? 5);
 
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
@@ -11,8 +16,8 @@ if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
 // 1. LOGICA TOGGLE RÁPIDO (Estado)
 if(isset($_GET['toggle_id'])) {
-    $id_tog = $_GET['toggle_id'];
-    $st_act = $_GET['estado']; 
+    $id_tog = intval($_GET['toggle_id']);
+    $st_act = intval($_GET['estado']);
     $nuevo = $st_act == 1 ? 0 : 1;
     $conexion->prepare("UPDATE productos SET activo = ? WHERE id = ?")->execute([$nuevo, $id_tog]);
     header("Location: productos.php"); exit;
@@ -20,7 +25,11 @@ if(isset($_GET['toggle_id'])) {
 
 // 2. PROCESAR BAJA
 if (isset($_GET['borrar'])) {
-    $id_borrar = $_GET['borrar'];
+    // Validamos que el token de la URL coincida con el de la sesión
+    if (!isset($_GET['token']) || $_GET['token'] !== $_SESSION['csrf_token']) {
+        die("Error de seguridad: Token inválido.");
+    }
+    $id_borrar = intval($_GET['borrar']);
     $stmtCheck = $conexion->prepare("SELECT codigo_barras, tipo FROM productos WHERE id = ?");
     $stmtCheck->execute([$id_borrar]);
     $prodData = $stmtCheck->fetch(PDO::FETCH_ASSOC);
@@ -48,12 +57,17 @@ $bajo_stock = 0;
 $valor_inventario = 0;
 
 foreach($productos as $p) {
-    // Si usas fetchAll() por defecto puede ser array u objeto, detectamos cuál es para no romper
     $stk = is_object($p) ? $p->stock_actual : $p['stock_actual'];
     $min = is_object($p) ? $p->stock_minimo : $p['stock_minimo'];
     $cost = is_object($p) ? $p->precio_costo : $p['precio_costo'];
+    $tipo = is_object($p) ? $p->tipo : $p['tipo'];
     
-    if($stk <= $min) $bajo_stock++;
+    // Determinamos cuál es el límite para contar como "Bajo Stock"
+    $limite_para_alerta = $usar_global ? $stock_critico_global : $min;
+    
+    if($stk <= $limite_para_alerta && $tipo !== 'combo') {
+        $bajo_stock++;
+    }
     $valor_inventario += ($stk * $cost);
 }
 // --------------------------------------------------
@@ -335,6 +349,18 @@ require_once 'includes/layout_header.php';
             $claseCard = $p->activo ? '' : 'opacity-50 grayscale';
             $estadoData = $p->activo ? 'activos' : 'pausados';
             if($stock <= $min && $p->tipo !== 'combo') $estadoData .= ' bajo_stock';
+
+            // AGREGADO: Lógica exacta del Dashboard para vencimientos
+            if(!empty($p->fecha_vencimiento)) {
+                $f_venc = strtotime($p->fecha_vencimiento);
+                $f_hoy = strtotime(date('Y-m-d'));
+                $f_limite = strtotime("+$dias_venc days", $f_hoy);
+                
+                // Si la fecha es Hoy o Futura Y está dentro del rango de alerta
+                if($f_venc >= $f_hoy && $f_venc <= $f_limite) {
+                    $estadoData .= ' vencimientos';
+                }
+            }
         ?>
         <?php 
             // Detectamos si es bajo stock para el filtro del banner
@@ -420,7 +446,7 @@ require_once 'includes/layout_header.php';
                                 <a href="producto_formulario.php?id=<?php echo $p->id; ?>" class="btn-icon-action btn-edit" title="Editar">
                                     <i class="bi bi-pencil-square"></i>
                                 </a>
-                                <a href="productos.php?borrar=<?php echo $p->id; ?>" class="btn-icon-action btn-del" onclick="return confirm('¿Eliminar producto?')" title="Eliminar">
+                                <a href="productos.php?borrar=<?php echo $p->id; ?>&token=<?php echo $_SESSION['csrf_token']; ?>" class="btn-icon-action btn-del" onclick="return confirm('¿Eliminar producto?')" title="Eliminar">
                                     <i class="bi bi-trash3-fill"></i>
                                 </a>
                             </div>

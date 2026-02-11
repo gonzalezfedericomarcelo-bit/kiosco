@@ -14,7 +14,10 @@ if (!isset($_SESSION['usuario_id'])) {
     header("Location: index.php"); exit;
 }
 
-$id_cliente = $_GET['id'] ?? null;
+// Validamos que el ID sea un número y exista
+$id_cliente = intval($_GET['id'] ?? 0);
+if ($id_cliente <= 0) { header("Location: clientes.php"); exit; }
+
 if (!$id_cliente) { header("Location: clientes.php"); exit; }
 
 // DATOS CLIENTE

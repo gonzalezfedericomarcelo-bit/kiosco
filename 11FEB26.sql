@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 11-02-2026 a las 15:31:58
+-- Tiempo de generación: 11-02-2026 a las 19:41:23
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -58,6 +58,13 @@ CREATE TABLE `asistencia` (
   `ingreso` datetime DEFAULT current_timestamp(),
   `egreso` datetime DEFAULT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+--
+-- Volcado de datos para la tabla `asistencia`
+--
+
+INSERT INTO `asistencia` (`id`, `id_usuario`, `ingreso`, `egreso`) VALUES
+(1, 1, '2026-02-11 18:08:13', NULL);
 
 -- --------------------------------------------------------
 
@@ -171,7 +178,26 @@ INSERT INTO `auditoria` (`id`, `fecha`, `id_usuario`, `accion`, `detalles`) VALU
 (91, '2026-02-11 09:19:56', 1, 'VENTA_REALIZADA', 'Venta #78 | Total: $869.4 | Cliente ID: 3'),
 (92, '2026-02-11 09:20:09', 1, 'VENTA_REALIZADA', 'Venta #79 | Total: $19215 | Cliente ID: 1'),
 (93, '2026-02-11 09:51:42', 1, 'VENTA_REALIZADA', 'Venta #80 | Total: $15677.8 | Cliente ID: 1 | Desc.Manual: $2000'),
-(94, '2026-02-11 09:52:24', 1, 'VENTA_REALIZADA', 'Venta #81 | Total: $23786.8 | Cliente ID: 1 | Desc.Manual: $5000');
+(94, '2026-02-11 09:52:24', 1, 'VENTA_REALIZADA', 'Venta #81 | Total: $23786.8 | Cliente ID: 1 | Desc.Manual: $5000'),
+(95, '2026-02-11 14:47:36', 1, 'VENTA_REALIZADA', 'Venta #82 | Total: $0 | Cliente ID: 6'),
+(96, '2026-02-11 14:48:23', 1, 'VENTA_REALIZADA', 'Venta #83 | Total: $0 | Cliente ID: 3'),
+(97, '2026-02-11 14:49:59', 1, 'VENTA_REALIZADA', 'Venta #84 | Total: $0 | Cliente ID: 5'),
+(98, '2026-02-11 14:51:55', 1, 'VENTA_REALIZADA', 'Venta #85 | Total: $0 | Cliente ID: 1'),
+(99, '2026-02-11 14:52:12', 1, 'VENTA_REALIZADA', 'Venta #86 | Total: $0 | Cliente ID: 1'),
+(100, '2026-02-11 14:52:36', 1, 'VENTA_REALIZADA', 'Venta #87 | Total: $0 | Cliente ID: 1'),
+(101, '2026-02-11 14:53:53', 1, 'VENTA_REALIZADA', 'Venta #88 | Total: $1050 | Cliente ID: 1'),
+(102, '2026-02-11 18:10:10', 1, 'CANJE', 'Canje Cupón $0.00 (-20 pts)'),
+(103, '2026-02-11 18:40:58', 1, 'CANJE', 'Canje Cupón $0.00 (-20 pts)'),
+(104, '2026-02-11 18:41:33', 1, 'CANJE', 'Canje Cupón $0.00 (-20 pts)'),
+(105, '2026-02-11 18:46:41', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(106, '2026-02-11 18:54:40', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(107, '2026-02-11 19:03:52', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(108, '2026-02-11 19:10:16', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(109, '2026-02-11 19:10:45', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(110, '2026-02-11 19:13:26', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
+(111, '2026-02-11 19:18:04', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)'),
+(112, '2026-02-11 19:29:52', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)'),
+(113, '2026-02-11 19:34:09', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)');
 
 -- --------------------------------------------------------
 
@@ -292,9 +318,9 @@ CREATE TABLE `clientes` (
 
 INSERT INTO `clientes` (`id`, `nombre`, `dni_cuit`, `email`, `password`, `telefono`, `direccion`, `foto_perfil`, `fecha_nacimiento`, `recibir_notificaciones`, `limite_credito`, `saldo_deudor`, `puntos_acumulados`, `fecha_registro`, `whatsapp`, `dni`, `usuario`, `saldo_actual`, `saldo_favor`) VALUES
 (1, 'Consumidor Final', '00000000', NULL, NULL, '', NULL, 'default_user.png', '2026-02-11', 1, 0.00, 0.00, 0, '2026-01-26 11:15:20', NULL, '', NULL, 0.00, 0.00),
-(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', '$2y$10$IlXiIWtc20a46LntcZ9T/Ovr3m9nkPRgiRN44/.SE3ey8CHUVRRRy', NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 99, '2026-01-26 16:43:33', '+5491166116861', '35911753', NULL, 0.00, 0.00),
-(5, 'Federico', '24651315', NULL, NULL, '', 'Alto Comedero', 'default_user.png', NULL, 1, 10000.00, 0.00, 51, '2026-01-28 15:04:43', '1166116861', '', NULL, 0.00, 0.00),
-(6, 'Prueba Registro', '35975342', NULL, NULL, NULL, 'Altus', 'default_user.png', NULL, 1, 0.00, 0.00, 38, '2026-01-29 20:59:30', '1166116861', NULL, NULL, 0.00, 0.00),
+(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', '$2y$10$IlXiIWtc20a46LntcZ9T/Ovr3m9nkPRgiRN44/.SE3ey8CHUVRRRy', NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 27, '2026-01-26 16:43:33', '+5491166116861', '35911753', NULL, 0.00, 0.00),
+(5, 'Federico', '24651315', NULL, NULL, '', 'Alto Comedero', 'default_user.png', NULL, 1, 10000.00, 0.00, 20, '2026-01-28 15:04:43', '1166116861', '', NULL, 0.00, 0.00),
+(6, 'Prueba Registro', '35975342', NULL, NULL, NULL, 'Altus', 'default_user.png', NULL, 1, 0.00, 0.00, 18, '2026-01-29 20:59:30', '1166116861', NULL, NULL, 0.00, 0.00),
 (7, 'Soy nuevo con puntos', NULL, NULL, '$2y$10$R6Iz8tpZEx3wk2h/df3omOW4GUsPLH3lv5o2fYJmL.eos.oqKPeDK', '1166116861', NULL, 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-02-05 23:06:33', NULL, '35911754', NULL, 0.00, 0.00),
 (8, 'Servicio', NULL, NULL, '$2y$10$qt6V0Hoo7u/Iy9mAral51O6kEmrh.fuD6wDdIAfAeg2JqdRgXpNMy', '111111112', NULL, 'uploads/perfil_8_1770334480.png', NULL, 1, 0.00, 0.00, 0, '2026-02-05 23:25:37', NULL, '111111111', NULL, 0.00, 0.00),
 (9, 'Laura', NULL, NULL, '$2y$10$UGY1Ox.vsbMP/zyW85n4YeqWk6Y5M4fh/3yQaEeT1kXDxlADrTFEe', '', NULL, 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-02-06 02:36:29', NULL, '12345678', NULL, 0.00, 0.00),
@@ -395,15 +421,22 @@ CREATE TABLE `configuracion` (
   `direccion_degradado` varchar(20) DEFAULT '135deg',
   `dias_alerta_vencimiento` int(11) DEFAULT 30,
   `dinero_por_punto` decimal(10,2) DEFAULT 100.00,
-  `whatsapp_pedidos` varchar(50) DEFAULT ''
+  `whatsapp_pedidos` varchar(50) DEFAULT '',
+  `alerta_stock_global` int(11) DEFAULT 5,
+  `tipo_ticket_predeterminado` enum('afip','interno') DEFAULT 'interno',
+  `redondeo_caja` tinyint(1) DEFAULT 0,
+  `stock_use_global` tinyint(1) DEFAULT 0,
+  `stock_global_valor` int(11) DEFAULT 5,
+  `ticket_modo` varchar(20) DEFAULT 'afip',
+  `redondeo_auto` tinyint(1) DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 --
 -- Volcado de datos para la tabla `configuracion`
 --
 
-INSERT INTO `configuracion` (`id`, `nombre_negocio`, `telefono_whatsapp`, `email_notificaciones`, `direccion_local`, `color_barra_nav`, `color_botones`, `color_fondo`, `logo_url`, `modulo_clientes`, `modulo_stock`, `modulo_reportes`, `modulo_presupuesto`, `modulo_fidelizacion`, `cuit`, `mensaje_ticket`, `color_secundario`, `direccion_degradado`, `dias_alerta_vencimiento`, `dinero_por_punto`, `whatsapp_pedidos`) VALUES
-(1, 'Drogstore El 10', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123', '#102942', NULL, NULL, 'uploads/logo_1770687021.png', 1, 1, 0, 1, 1, '20359117532', 'Muchas gracias por tu compra. Agrr', NULL, NULL, 28, 1000.00, '5491166116861');
+INSERT INTO `configuracion` (`id`, `nombre_negocio`, `telefono_whatsapp`, `email_notificaciones`, `direccion_local`, `color_barra_nav`, `color_botones`, `color_fondo`, `logo_url`, `modulo_clientes`, `modulo_stock`, `modulo_reportes`, `modulo_presupuesto`, `modulo_fidelizacion`, `cuit`, `mensaje_ticket`, `color_secundario`, `direccion_degradado`, `dias_alerta_vencimiento`, `dinero_por_punto`, `whatsapp_pedidos`, `alerta_stock_global`, `tipo_ticket_predeterminado`, `redondeo_caja`, `stock_use_global`, `stock_global_valor`, `ticket_modo`, `redondeo_auto`) VALUES
+(1, 'Drogstore El 10', '5491166116861', 'gonzalezfedericomarcelo@gmail.com', 'Av. Siempre Viva 123', '#102942', NULL, NULL, 'uploads/logo_1770687021.png', 1, 1, 0, 1, 1, '20359117532', 'Muchas gracias por tu compra. Agrr', NULL, NULL, 28, 1000.00, '5491166116861', 5, 'interno', 0, 0, 5, 'afip', 0);
 
 -- --------------------------------------------------------
 
@@ -552,7 +585,21 @@ INSERT INTO `detalle_ventas` (`id`, `id_venta`, `id_producto`, `cantidad`, `prec
 (101, 81, 18, 1.000, 3360.00, 0.00, 3360.00),
 (102, 81, 11, 2.000, 420.00, 0.00, 840.00),
 (103, 81, 5, 2.000, 1470.00, 0.00, 2940.00),
-(104, 81, 4, 2.000, 12075.00, 0.00, 24150.00);
+(104, 81, 4, 2.000, 12075.00, 0.00, 24150.00),
+(105, 82, 12, 1.000, 315.00, 0.00, 315.00),
+(106, 82, 8, 1.000, 630.00, 0.00, 630.00),
+(107, 83, 6, 1.000, 1155.00, 0.00, 1155.00),
+(108, 83, 21, 1.000, 2100.00, 0.00, 2100.00),
+(109, 84, 20, 1.000, 5200.00, 0.00, 5200.00),
+(110, 85, 6, 1.000, 1155.00, 0.00, 1155.00),
+(111, 85, 21, 1.000, 2100.00, 0.00, 2100.00),
+(112, 85, 4, 1.000, 12075.00, 0.00, 12075.00),
+(113, 85, 18, 2.000, 3360.00, 0.00, 6720.00),
+(114, 85, 5, 1.000, 1470.00, 0.00, 1470.00),
+(115, 85, 16, 1.000, 2940.00, 0.00, 2940.00),
+(116, 86, 18, 1.000, 3360.00, 0.00, 3360.00),
+(117, 87, 18, 1.000, 3360.00, 0.00, 3360.00),
+(118, 88, 9, 1.000, 1050.00, 0.00, 1050.00);
 
 -- --------------------------------------------------------
 
@@ -804,8 +851,17 @@ CREATE TABLE `premios` (
   `stock` int(11) DEFAULT 100,
   `activo` tinyint(1) DEFAULT 1,
   `es_cupon` tinyint(1) DEFAULT 0,
-  `monto_dinero` decimal(10,2) DEFAULT 0.00
+  `monto_dinero` decimal(10,2) DEFAULT 0.00,
+  `id_articulo` int(11) DEFAULT NULL,
+  `tipo_articulo` enum('ninguno','producto','combo') DEFAULT 'ninguno'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_uca1400_ai_ci;
+
+--
+-- Volcado de datos para la tabla `premios`
+--
+
+INSERT INTO `premios` (`id`, `nombre`, `puntos_necesarios`, `stock`, `activo`, `es_cupon`, `monto_dinero`, `id_articulo`, `tipo_articulo`) VALUES
+(22, 'fedede', 1, 10, 1, 1, 0.00, NULL, 'ninguno');
 
 -- --------------------------------------------------------
 
@@ -844,24 +900,24 @@ CREATE TABLE `productos` (
 INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larga`, `id_categoria`, `id_proveedor`, `tipo`, `precio_costo`, `precio_venta`, `precio_oferta`, `stock_actual`, `stock_minimo`, `imagen_url`, `es_destacado_web`, `es_apto_celiaco`, `es_apto_vegano`, `activo`, `fecha_vencimiento`, `dias_alerta`, `es_vegano`, `es_celiaco`) VALUES
 (2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1890.00, 2730.00, NULL, 34.000, 10.000, 'uploads/prod_1770255531_532.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (3, '7790895001000', 'Coca-Cola Zero 2.25L', NULL, 1, 1, 'unitario', 1575.00, 3150.00, NULL, 11.000, 5.000, 'uploads/prod_1770255526_425.png', 0, 1, 1, 1, NULL, NULL, 1, 1),
-(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7875.00, 12075.00, NULL, 87.000, 10.000, 'uploads/prod_1770255511_248.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
-(5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 945.00, 1470.00, NULL, 87.000, 24.000, 'uploads/prod_1770255503_324.png', 1, 0, 1, 1, NULL, NULL, 0, 0),
-(6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 630.00, 1155.00, NULL, 50.000, 10.000, 'uploads/prod_1770255428_805.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
+(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7875.00, 12075.00, NULL, 86.000, 10.000, 'uploads/prod_1770255511_248.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
+(5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 945.00, 1470.00, NULL, 86.000, 24.000, 'uploads/prod_1770255503_324.png', 1, 0, 1, 1, NULL, NULL, 0, 0),
+(6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 630.00, 1155.00, NULL, 48.000, 10.000, 'uploads/prod_1770255428_805.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (7, '7791234567890', 'Monster Energy Green 473ml', NULL, 1, 1, 'unitario', 1155.00, 1890.00, NULL, 6.000, 6.000, 'uploads/prod_1770255423_790.png', 1, 0, 1, 1, NULL, NULL, 0, 0),
-(8, '7790580123456', 'Alfajor Guaymallén Dulce de Leche', NULL, 2, 1, 'unitario', 315.00, 630.00, NULL, 184.000, 24.000, 'uploads/prod_1770255417_877.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
-(9, '7790580999999', 'Alfajor Jorgito Chocolate', NULL, 2, 1, 'unitario', 630.00, 1050.00, NULL, 34.000, 12.000, 'uploads/prod_1770255413_500.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
+(8, '7790580123456', 'Alfajor Guaymallén Dulce de Leche', NULL, 2, 1, 'unitario', 315.00, 630.00, NULL, 183.000, 24.000, 'uploads/prod_1770255417_877.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
+(9, '7790580999999', 'Alfajor Jorgito Chocolate', NULL, 2, 1, 'unitario', 630.00, 1050.00, NULL, 33.000, 12.000, 'uploads/prod_1770255413_500.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
 (10, '7790060023654', 'Chocolate Milka Leger 100g', NULL, 2, 1, 'unitario', 1575.00, 2625.00, NULL, 28.000, 5.000, 'uploads/prod_1770255406_507.png', 0, 1, 0, 1, NULL, NULL, 0, 0),
 (11, '7790456000021', 'Pastillas DRF Menta', NULL, 2, 1, 'unitario', 210.00, 420.00, NULL, 87.000, 10.000, 'uploads/prod_1770255400_348.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
-(12, '7791111222233', 'Turrón Arcor Misky', NULL, 2, 1, 'unitario', 157.50, 315.00, NULL, 494.000, 50.000, 'uploads/prod_1770255394_844.png', 0, 0, 1, 1, NULL, NULL, 0, 0),
+(12, '7791111222233', 'Turrón Arcor Misky', NULL, 2, 1, 'unitario', 157.50, 315.00, NULL, 493.000, 50.000, 'uploads/prod_1770255394_844.png', 0, 0, 1, 1, NULL, NULL, 0, 0),
 (13, '7790999000111', 'Chicle Beldent Menta 8u', NULL, 2, 1, 'unitario', 420.00, 840.00, NULL, 58.000, 20.000, 'uploads/prod_1770255584_118.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
 (14, '7790040866666', 'Papas Fritas Lays Clásicas 85g', NULL, 3, 1, 'unitario', 1260.00, 2205.00, NULL, 10.000, 10.000, 'uploads/prod_1770255381_602.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (15, '7790040855555', 'Doritos Queso 85g', NULL, 3, 1, 'unitario', 1365.00, 2415.00, NULL, 3.000, 10.000, 'uploads/prod_1770255375_280.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
-(16, '7794444555566', 'Yerba Playadito 500g', NULL, 3, 1, 'unitario', 1890.00, 2940.00, 1500.00, 35.000, 10.000, 'uploads/prod_1770255364_257.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
+(16, '7794444555566', 'Yerba Playadito 500g', NULL, 3, 1, 'unitario', 1890.00, 2940.00, 1500.00, 34.000, 10.000, 'uploads/prod_1770255364_257.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
 (17, '7792222333344', 'Galletitas 9 de Oro Clásicas', NULL, 3, 1, 'unitario', 840.00, 2940.00, NULL, 5.000, 5.000, 'uploads/prod_1770253556_135.png', 0, 0, 1, 1, '2026-03-07', 40, 1, 1),
-(18, '7790000000001', 'Marlboro Box 20', NULL, 4, 1, 'unitario', 2625.00, 3360.00, NULL, 88.000, 20.000, 'uploads/prod_1770255357_603.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
+(18, '7790000000001', 'Marlboro Box 20', NULL, 4, 1, 'unitario', 2625.00, 3360.00, NULL, 84.000, 20.000, 'uploads/prod_1770255357_603.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
 (19, '7790000000002', 'Philip Morris Box 20', NULL, 4, 1, 'unitario', 2415.00, 3045.00, NULL, 76.000, 20.000, 'uploads/prod_1770252536_715.png', 0, 0, 0, 1, NULL, NULL, 0, 0),
-(20, '7790000000003', 'Camel Box 20', NULL, 4, 2, 'unitario', 2500.00, 5200.00, 1800.00, 35.000, 5.000, 'uploads/prod_1770252839_949.png', 1, 0, 0, 1, NULL, NULL, 1, 1),
-(21, '7790000000004', 'Chesterfield Box 20', NULL, 4, 1, 'unitario', 525.00, 2100.00, 1200.00, 41.000, 5.000, 'uploads/prod_1770253452_530.png', 0, 0, 0, 1, '2026-02-13', 5, 1, 1),
+(20, '7790000000003', 'Camel Box 20', NULL, 4, 2, 'unitario', 2500.00, 5200.00, 1800.00, 34.000, 5.000, 'uploads/prod_1770252839_949.png', 1, 0, 0, 1, NULL, NULL, 1, 1),
+(21, '7790000000004', 'Chesterfield Box 20', NULL, 4, 1, 'unitario', 525.00, 2100.00, 1200.00, 39.000, 5.000, 'uploads/prod_1770253452_530.png', 0, 0, 0, 1, '2026-02-13', 5, 1, 1),
 (39, 'COMBO-1770600377', 'PACK2', NULL, 2, 1, 'combo', 0.00, 21000.00, 18000.00, 0.000, 5.000, 'uploads/combo_1770601303.png', 1, 0, 0, 1, NULL, NULL, 0, 0);
 
 -- --------------------------------------------------------
@@ -1261,7 +1317,14 @@ INSERT INTO `ventas` (`id`, `codigo_ticket`, `id_caja_sesion`, `id_usuario`, `id
 (78, NULL, 11, 1, 3, '2026-02-11 09:19:56', 869.40, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (79, NULL, 11, 1, 1, '2026-02-11 09:20:09', 19215.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
 (80, NULL, 12, 1, 1, '2026-02-11 09:51:42', 15677.80, 0.00, 2000.00, 'verano', 'Efectivo', 'completada', 'local'),
-(81, NULL, 12, 1, 1, '2026-02-11 09:52:24', 23786.80, 0.00, 5000.00, 'verano', 'Efectivo', 'completada', 'local');
+(81, NULL, 12, 1, 1, '2026-02-11 09:52:24', 23786.80, 0.00, 5000.00, 'verano', 'Efectivo', 'completada', 'local'),
+(82, NULL, 12, 1, 6, '2026-02-11 14:47:36', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(83, NULL, 12, 1, 3, '2026-02-11 14:48:23', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(84, NULL, 12, 1, 5, '2026-02-11 14:49:59', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(85, NULL, 12, 1, 1, '2026-02-11 14:51:55', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(86, NULL, 12, 1, 1, '2026-02-11 14:52:12', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(87, NULL, 12, 1, 1, '2026-02-11 14:52:36', 0.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local'),
+(88, NULL, 12, 1, 1, '2026-02-11 14:53:53', 1050.00, 0.00, 0.00, '', 'Efectivo', 'completada', 'local');
 
 -- --------------------------------------------------------
 
@@ -1405,8 +1468,9 @@ ALTER TABLE `mermas`
 --
 ALTER TABLE `movimientos_cc`
   ADD PRIMARY KEY (`id`),
-  ADD KEY `id_cliente` (`id_cliente`),
-  ADD KEY `id_usuario` (`id_usuario`);
+  ADD KEY `id_usuario` (`id_usuario`),
+  ADD KEY `idx_cliente_mov` (`id_cliente`),
+  ADD KEY `idx_fecha_mov` (`fecha`);
 
 --
 -- Indices de la tabla `movimientos_proveedores`
@@ -1442,7 +1506,8 @@ ALTER TABLE `productos`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `codigo_barras` (`codigo_barras`),
   ADD KEY `id_categoria` (`id_categoria`),
-  ADD KEY `id_proveedor` (`id_proveedor`);
+  ADD KEY `id_proveedor` (`id_proveedor`),
+  ADD KEY `idx_codigo_barras` (`codigo_barras`);
 
 --
 -- Indices de la tabla `productos_combo`
@@ -1498,7 +1563,8 @@ ALTER TABLE `ventas`
   ADD PRIMARY KEY (`id`),
   ADD UNIQUE KEY `codigo_ticket` (`codigo_ticket`),
   ADD KEY `id_cliente` (`id_cliente`),
-  ADD KEY `fk_venta_usuario` (`id_usuario`);
+  ADD KEY `idx_fecha_venta` (`fecha`),
+  ADD KEY `idx_usuario_venta` (`id_usuario`);
 
 --
 -- Indices de la tabla `ventas_suspendidas`
@@ -1526,13 +1592,13 @@ ALTER TABLE `afip_config`
 -- AUTO_INCREMENT de la tabla `asistencia`
 --
 ALTER TABLE `asistencia`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
 
 --
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=95;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=114;
 
 --
 -- AUTO_INCREMENT de la tabla `bienes_uso`
@@ -1580,7 +1646,7 @@ ALTER TABLE `cupones`
 -- AUTO_INCREMENT de la tabla `detalle_ventas`
 --
 ALTER TABLE `detalle_ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=105;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=119;
 
 --
 -- AUTO_INCREMENT de la tabla `devoluciones`
@@ -1634,7 +1700,7 @@ ALTER TABLE `permisos`
 -- AUTO_INCREMENT de la tabla `premios`
 --
 ALTER TABLE `premios`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
 
 --
 -- AUTO_INCREMENT de la tabla `productos`
@@ -1676,7 +1742,7 @@ ALTER TABLE `usuarios`
 -- AUTO_INCREMENT de la tabla `ventas`
 --
 ALTER TABLE `ventas`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=82;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=89;
 
 --
 -- AUTO_INCREMENT de la tabla `ventas_suspendidas`

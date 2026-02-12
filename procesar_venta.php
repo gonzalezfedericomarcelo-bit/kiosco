@@ -6,6 +6,7 @@ ini_set('display_errors', 0);
 
 session_start();
 require_once '../includes/db.php';
+require_once '../includes/interfaz_helper.php';
 header('Content-Type: application/json');
 
 try {
@@ -16,18 +17,18 @@ try {
 
     // 2. RECEPCIÓN DE DATOS
     $items = $_POST['items'] ?? [];
-    $metodo = $_POST['metodo'] ?? 'Efectivo';
-    $total = $_POST['total'] ?? 0;
-    $id_cliente = $_POST['id_cliente'] ?? 1; 
+    // SEGURIDAD: Forzamos tipos de datos para evitar inyecciones
+$id_cliente = (isset($_POST['id_cliente']) && $_POST['id_cliente'] !== '') ? intval($_POST['id_cliente']) : null;
+$metodo_pago = preg_replace('/[^a-zA-Z0-9_]/', '', $_POST['metodo_pago'] ?? 'efectivo');
+$total = floatval($_POST['total'] ?? 0);
     $user_id = $_SESSION['usuario_id'];
 
-    // Datos extra
-    $cupon_codigo = $_POST['cupon_codigo'] ?? null;
-    $desc_cupon_monto = $_POST['desc_cupon_monto'] ?? 0;
-    $desc_manual_monto = $_POST['desc_manual_monto'] ?? 0;
-    $saldo_favor_usado = $_POST['saldo_favor_usado'] ?? 0;
-    $pago_deuda = $_POST['pago_deuda'] ?? 0;
-    $pagos_mixtos = $_POST['pagos_mixtos'] ?? null; 
+    // Datos extra blindados
+    $cupon_codigo = isset($_POST['cupon_codigo']) ? preg_replace('/[^a-zA-Z0-9]/', '', $_POST['cupon_codigo']) : null;
+    $desc_cupon_monto = floatval($_POST['desc_cupon_monto'] ?? 0);
+    $desc_manual_monto = floatval($_POST['desc_manual_monto'] ?? 0);
+    $saldo_favor_usado = floatval($_POST['saldo_favor_usado'] ?? 0);
+    $pago_deuda = floatval($_POST['pago_deuda'] ?? 0);
 
     if(empty($items)) { 
         throw new Exception('El carrito está vacío.'); 
@@ -46,6 +47,8 @@ try {
         throw new Exception("No tienes una caja abierta. Por favor realiza la apertura de caja."); 
     }
     $id_caja_sesion = $caja['id'];
+    $conf = $conexion->query("SELECT dinero_por_punto, redondeo_auto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
+    $redondeo_activo = (isset($conf['redondeo_auto']) && $conf['redondeo_auto'] == 1);
 
     // ---------------------------------------------------------
     // 4. VALIDACIÓN DE STOCK (PREVIA A LA VENTA)
@@ -62,6 +65,21 @@ try {
 
         // LÓGICA DE COMBOS
         if ($prodDB['tipo'] === 'combo') {
+            // --- NUEVA VALIDACIÓN DE VIGENCIA ---
+            $hoy = date('Y-m-d');
+            // Buscamos la regla del combo usando el código de barras
+            $stmtVigencia = $conexion->prepare("SELECT fecha_inicio, fecha_fin, es_ilimitado, nombre FROM combos WHERE codigo_barras = ? LIMIT 1");
+            $stmtVigencia->execute([$prodDB['codigo_barras']]);
+            $reglaCombo = $stmtVigencia->fetch(PDO::FETCH_ASSOC);
+
+            if ($reglaCombo) {
+                if ($reglaCombo['es_ilimitado'] == 0) {
+                    if ($hoy < $reglaCombo['fecha_inicio'] || $hoy > $reglaCombo['fecha_fin']) {
+                        throw new Exception("La oferta '{$reglaCombo['nombre']}' ya no está vigente o venció.");
+                    }
+                }
+            }
+            // ------------------------------------
             $id_combo_real = null;
             
             // A. Buscar por código de barras
@@ -123,12 +141,13 @@ try {
     // ---------------------------------------------------------
     // 5. REGISTRO DE LA VENTA (CABECERA)
     // ---------------------------------------------------------
+    $total = redondearVenta($total, $redondeo_activo);
     $fecha_actual = date('Y-m-d H:i:s');
     
     $sql = "INSERT INTO ventas (id_caja_sesion, id_usuario, id_cliente, total, metodo_pago, fecha, estado, descuento_monto_cupon, descuento_manual, codigo_cupon) 
             VALUES (?, ?, ?, ?, ?, ?, 'completada', ?, ?, ?)";
     $stmt = $conexion->prepare($sql);
-    $stmt->execute([$id_caja_sesion, $user_id, $id_cliente, $total, $metodo, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
+    $stmt->execute([$id_caja_sesion, $user_id, $id_cliente, $total, $metodo_pago, $fecha_actual, $desc_cupon_monto, $desc_manual_monto, $cupon_codigo]);
     
     $venta_id = $conexion->lastInsertId();
 
@@ -180,9 +199,10 @@ try {
                 }
             }
             
-            // Si no se descontaron ingredientes (por error de link o vacío), descontamos el padre
+            // Si es un combo, JAMÁS tocamos el stock del producto padre (id).
+            // Solo descontamos los hijos arriba. Si no tiene hijos, no descuenta nada (porque es una oferta, no un producto físico).
             if (!$descontado_ingredientes) {
-                $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")->execute([$item['cantidad'], $item['id']]);
+                // No hacemos nada. El combo es virtual.
             }
 
         } else {
@@ -211,8 +231,8 @@ try {
         }
         
         $conf = $conexion->query("SELECT dinero_por_punto FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
-        $ratio = $conf['dinero_por_punto'] ?? 100;
-        if ($ratio > 0) {
+        $ratio = floatval($conf['dinero_por_punto'] ?? 100);
+        if ($ratio > 0.1) {
             $puntos_nuevos = floor($total / $ratio);
             if ($puntos_nuevos > 0) {
                 $conexion->prepare("UPDATE clientes SET puntos_acumulados = puntos_acumulados + ? WHERE id = ?")->execute([$puntos_nuevos, $id_cliente]);

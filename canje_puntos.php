@@ -1,5 +1,5 @@
 <?php
-// canje_puntos.php - VERSIÓN FINAL CORREGIDA (LIMPIA DE ERRORES Y DUPLICADOS)
+// canje_puntos.php - VERSIÓN BLINDADA Y DETALLADA
 session_start();
 ini_set('display_errors', 1);
 error_reporting(E_ALL);
@@ -10,15 +10,10 @@ foreach ($rutas_db as $ruta) { if (file_exists($ruta)) { require_once $ruta; bre
 
 if (!isset($_SESSION['usuario_id'])) { header("Location: index.php"); exit; }
 
-// VERIFICAR CAJA ABIERTA (Necesaria para registrar el gasto del canje)
-// VERIFICAR CAJA ABIERTA (Necesaria para registrar el gasto)
-$stmtCaja = $conexion->prepare("SELECT id FROM cajas_sesion WHERE id_usuario = ? AND estado = 'abierta'");
-$stmtCaja->execute([$_SESSION['usuario_id']]);
+// Buscamos la última caja abierta en el sistema
+$stmtCaja = $conexion->query("SELECT id FROM cajas_sesion WHERE estado = 'abierta' ORDER BY id DESC LIMIT 1");
 $caja = $stmtCaja->fetch(PDO::FETCH_ASSOC);
 $id_caja_sesion = $caja ? $caja['id'] : 0;
-if($caja) {
-    $id_caja_sesion = is_array($caja) ? $caja['id'] : $caja->id;
-}
 
 $mensaje_sweet = '';
 $resultados_busqueda = [];
@@ -70,7 +65,7 @@ if (isset($_GET['id_cliente'])) {
     $cliente_seleccionado = $stmt->fetch(PDO::FETCH_ASSOC);
 }
 
-// 4. PROCESAR CANJE (VERSION BLINDADA CON TUS TABLAS REALES)
+// 4. PROCESAR CANJE (LÓGICA CORREGIDA PARA DETALLES)
 if (isset($_POST['canjear']) && $cliente_seleccionado) {
     $id_cliente = $_POST['id_cliente'];
     $id_premio = $_POST['id_premio'];
@@ -84,61 +79,74 @@ if (isset($_POST['canjear']) && $cliente_seleccionado) {
         
         $stmtP = $conexion->prepare("SELECT * FROM premios WHERE id = ?");
         $stmtP->execute([$id_premio]);
-        $premio = $stmtP->fetch(PDO::FETCH_ASSOC); // FORZAMOS ARRAY PARA EVITAR ERRORES
+        $premio = $stmtP->fetch(PDO::FETCH_ASSOC);
         
         if ($pts_actuales >= $premio['puntos_necesarios']) {
+            // 1. Descontar Puntos
             $nuevo_saldo = $pts_actuales - $premio['puntos_necesarios'];
             $conexion->prepare("UPDATE clientes SET puntos_acumulados = ? WHERE id = ?")->execute([$nuevo_saldo, $id_cliente]);
             
+            $txt_log = "";
+            $detalle_receta = ""; // Variable clave para el detalle
+
+            // 2. Procesar Cupón o Producto
             if ($premio['es_cupon'] == 1) {
                 $monto = $premio['monto_dinero'];
                 $conexion->prepare("UPDATE clientes SET saldo_favor = saldo_favor + ? WHERE id = ?")->execute([$monto, $id_cliente]);
                 $txt_log = "Canje Cupón $$monto";
             } else {
                 $costo_gasto = 0; 
-
+                
                 // A. PRODUCTO INDIVIDUAL
                 if ($premio['tipo_articulo'] == 'producto' && !empty($premio['id_articulo'])) {
                     $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - 1 WHERE id = ?")->execute([$premio['id_articulo']]);
                     
-                    $stmtCosto = $conexion->prepare("SELECT precio_costo FROM productos WHERE id = ?");
-                    $stmtCosto->execute([$premio['id_articulo']]);
-                    $costo_gasto = $stmtCosto->fetchColumn();
+                    // Obtenemos costo y nombre para el detalle
+                    $stmtProd = $conexion->prepare("SELECT precio_costo, descripcion FROM productos WHERE id = ?");
+                    $stmtProd->execute([$premio['id_articulo']]);
+                    $prodData = $stmtProd->fetch(PDO::FETCH_ASSOC);
+                    
+                    $costo_gasto = $prodData['precio_costo'];
+                    $detalle_receta = " (Producto: " . $prodData['descripcion'] . ")";
 
                 } 
-                // B. COMBO (CORREGIDO: Usando tu tabla COMBO_ITEMS)
+                // B. COMBO (Aquí estaba el problema del detalle)
                 elseif ($premio['tipo_articulo'] == 'combo' && !empty($premio['id_articulo'])) {
-                    $stmtItems = $conexion->prepare("SELECT ci.id_producto, ci.cantidad, p.precio_costo 
+                    $stmtItems = $conexion->prepare("SELECT ci.id_producto, ci.cantidad, p.precio_costo, p.descripcion 
                                                      FROM combo_items ci 
                                                      JOIN productos p ON ci.id_producto = p.id 
                                                      WHERE ci.id_combo = ?");
                     $stmtItems->execute([$premio['id_articulo']]);
                     $items_combo = $stmtItems->fetchAll(PDO::FETCH_ASSOC);
 
+                    $detalle_receta = " (Incluye: ";
                     foreach($items_combo as $item) {
-                        // Descontamos del stock real de cada ingrediente
                         $conexion->prepare("UPDATE productos SET stock_actual = stock_actual - ? WHERE id = ?")
                                  ->execute([$item['cantidad'], $item['id_producto']]);
                         
-                        // Sumamos el costo real
                         $costo_gasto += ($item['precio_costo'] * $item['cantidad']);
+                        $detalle_receta .= $item['descripcion'] . " x" . floatval($item['cantidad']) . ", ";
                     }
+                    $detalle_receta = rtrim($detalle_receta, ", ") . ")";
                 }
 
-                // REGISTRAR GASTO (Si hay costo y caja abierta)
+                $txt_log = "Canje Producto: " . $premio['nombre'];
+
+                // REGISTRAR GASTO (Ahora incluye $detalle_receta)
                 if ($costo_gasto > 0 && $id_caja_sesion > 0) {
-                    $desc_gasto = "Costo Canje Fidelización: " . $premio['nombre'] . " (Cliente #$id_cliente)";
+                    $desc_gasto = "Costo Canje Fidelización: " . $premio['nombre'] . $detalle_receta . " | Cliente: " . $cliente_seleccionado['nombre'];
                     $conexion->prepare("INSERT INTO gastos (descripcion, monto, categoria, fecha, id_usuario, id_caja_sesion) VALUES (?, ?, 'Fidelizacion', NOW(), ?, ?)")
                              ->execute([$desc_gasto, $costo_gasto, $_SESSION['usuario_id'], $id_caja_sesion]);
                 }
 
                 $conexion->prepare("UPDATE premios SET stock = stock - 1 WHERE id = ?")->execute([$id_premio]);
-                $txt_log = "Canje Producto: " . $premio['nombre'];
             }
             
-            $detalle = "$txt_log (-" . $premio['puntos_necesarios'] . " pts)";
+            // 3. REGISTRAR AUDITORÍA (CORREGIDO: Ahora incluye el detalle completo)
+            $detalle_audit = $txt_log . $detalle_receta . " (-" . $premio['puntos_necesarios'] . " pts)";
+            
             $conexion->prepare("INSERT INTO auditoria (id_usuario, accion, detalles, fecha) VALUES (?, 'CANJE', ?, NOW())")
-                     ->execute([$_SESSION['usuario_id'], $detalle]);
+                     ->execute([$_SESSION['usuario_id'], $detalle_audit]);
             
             $conexion->commit();
             header("Location: canje_puntos.php?id_cliente=$id_cliente&exito=1");

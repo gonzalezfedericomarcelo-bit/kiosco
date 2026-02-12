@@ -23,17 +23,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['agregar'])) {
         $nombre = $_POST['nombre'];
         $puntos = $_POST['puntos'];
         $stock = $_POST['stock'];
-        $es_cupon = isset($_POST['es_cupon']) ? 1 : 0;
+        $es_cupon = isset($_POST['es_cupon']) && $_POST['es_cupon'] == "1" ? 1 : 0;
         $monto = $_POST['monto_dinero'] ?? 0;
         
         $tipo_articulo = $_POST['tipo_articulo'] ?? 'ninguno';
         $id_articulo = null;
 
-        // LÓGICA DE SELECCIÓN DIRECTA (Ignoramos el hidden JS para mayor seguridad)
-        if ($es_cupon) {
+        // Si es cupón, ignoramos productos/combos
+        if ($es_cupon == 1) {
             $tipo_articulo = 'ninguno';
             $id_articulo = null;
         } else {
+            // Si es mercadería, tomamos el ID según lo que eligió en el desplegable
             if ($tipo_articulo == 'producto') {
                 $id_articulo = !empty($_POST['id_articulo_prod']) ? $_POST['id_articulo_prod'] : null;
             } elseif ($tipo_articulo == 'combo') {
@@ -41,25 +42,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['agregar'])) {
             }
         }
 
-        // 1. CAPTURAR DATOS DEL SELECTOR
-        $tipo_articulo = $_POST['tipo_articulo'] ?? 'ninguno';
-        $id_articulo = null;
-
-        if ($tipo_articulo == 'producto') {
-            $id_articulo = !empty($_POST['id_articulo_prod']) ? $_POST['id_articulo_prod'] : null;
-        } elseif ($tipo_articulo == 'combo') {
-            $id_articulo = !empty($_POST['id_articulo_combo']) ? $_POST['id_articulo_combo'] : null;
-        }
-
-        // Si es cupón de dinero, limpiamos cualquier selección de artículo
-        if ($es_cupon) { 
-            $tipo_articulo = 'ninguno'; 
-            $id_articulo = null; 
-        }
-
-        // 2. INSERT NUEVO (CON LOS CAMPOS DE VINCULACIÓN)
-        $conexion->prepare("INSERT INTO premios (nombre, puntos_necesarios, stock, es_cupon, monto_dinero, activo, id_articulo, tipo_articulo) VALUES (?, ?, ?, ?, ?, 1, ?, ?)")
-                 ->execute([$nombre, $puntos, $stock, $es_cupon, $monto, $id_articulo, $tipo_articulo]);
+        // INSERTAR (Solo una vez, limpio)
+        $sql = "INSERT INTO premios (nombre, puntos_necesarios, stock, es_cupon, monto_dinero, activo, id_articulo, tipo_articulo) 
+                VALUES (?, ?, ?, ?, ?, 1, ?, ?)";
+        $conexion->prepare($sql)->execute([$nombre, $puntos, $stock, $es_cupon, $monto, $id_articulo, $tipo_articulo]);
         
         header("Location: gestionar_premios.php?msg=creado"); exit;
     } catch (Exception $e) {

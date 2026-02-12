@@ -36,6 +36,63 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 // 5. DATOS
 $gastos = $conexion->query("SELECT g.*, u.usuario FROM gastos g JOIN usuarios u ON g.id_usuario = u.id ORDER BY g.fecha DESC LIMIT 50")->fetchAll(PDO::FETCH_ASSOC);
 
+// --- PROCESAMIENTO INTELIGENTE DE DETALLES ---
+foreach ($gastos as &$g) {
+    // Variables por defecto para el JS
+    $g['info_extra_titulo'] = '';   // Ej: BENEFICIARIO, CLIENTE, PROVEEDOR
+    $g['info_extra_nombre'] = '';   // Ej: Juan Perez
+    $g['lista_items_titulo'] = '';  // Ej: DETALLE RECETA, PRODUCTOS DEVUELTOS
+    $g['lista_items'] = [];         // Array con {cantidad, descripcion, monto}
+
+    // CASO A: FIDELIZACIÓN (Canje de Puntos)
+    if (($g['categoria'] == 'Fidelizacion' || $g['categoria'] == 'Fidelización') && preg_match('/Cliente #(\d+)/', $g['descripcion'], $matches)) {
+        $idCliente = $matches[1];
+        
+        // 1. Buscar Nombre Cliente
+        $stmt = $conexion->prepare("SELECT nombre FROM clientes WHERE id = ?");
+        $stmt->execute([$idCliente]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $g['info_extra_titulo'] = 'BENEFICIARIO';
+            $g['info_extra_nombre'] = $row['nombre'];
+        }
+
+        // 2. Buscar Receta del Combo
+        if (preg_match('/:\s(.*?)\s\(/', $g['descripcion'], $matchPremio)) {
+            $nombrePremio = $matchPremio[1]; 
+            $stmtP = $conexion->prepare("SELECT id_articulo, tipo_articulo FROM premios WHERE nombre = ?");
+            $stmtP->execute([$nombrePremio]);
+            $premio = $stmtP->fetch(PDO::FETCH_ASSOC);
+
+            if ($premio && $premio['tipo_articulo'] == 'combo') {
+                $g['lista_items_titulo'] = 'COSTO RECETA (COMBO)';
+                $stmtI = $conexion->prepare("SELECT p.descripcion, ci.cantidad, p.precio_costo as monto FROM combo_items ci JOIN productos p ON ci.id_producto = p.id WHERE ci.id_combo = ?");
+                $stmtI->execute([$premio['id_articulo']]);
+                $g['lista_items'] = $stmtI->fetchAll(PDO::FETCH_ASSOC);
+            }
+        }
+    }
+
+    // CASO B: DEVOLUCIONES (Reintegro de Dinero)
+    elseif ($g['categoria'] == 'Devoluciones' && preg_match('/Ticket #(\d+)/', $g['descripcion'], $matches)) {
+        $idTicket = $matches[1];
+
+        // 1. Buscar Cliente Original en la Venta
+        $stmt = $conexion->prepare("SELECT c.nombre FROM ventas v JOIN clientes c ON v.id_cliente = c.id WHERE v.id = ?");
+        $stmt->execute([$idTicket]);
+        if ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+            $g['info_extra_titulo'] = 'CLIENTE ORIG.';
+            $g['info_extra_nombre'] = $row['nombre'];
+        }
+
+        // 2. Buscar Qué productos devolvió
+        $g['lista_items_titulo'] = 'ÍTEMS DEVUELTOS';
+        $stmtD = $conexion->prepare("SELECT p.descripcion, d.cantidad, d.monto_devuelto as monto FROM devoluciones d JOIN productos p ON d.id_producto = p.id WHERE d.id_venta_original = ?");
+        $stmtD->execute([$idTicket]);
+        $g['lista_items'] = $stmtD->fetchAll(PDO::FETCH_ASSOC);
+    }
+}
+unset($g);
+// --- FIN MODIFICACIÓN ---
 // KPIS
 $hoy = date('Y-m-d');
 $totalHoy = $conexion->query("SELECT SUM(monto) FROM gastos WHERE DATE(fecha) = '$hoy'")->fetchColumn() ?: 0;
@@ -228,46 +285,89 @@ $totalMes = $conexion->query("SELECT SUM(monto) FROM gastos WHERE DATE_FORMAT(fe
     <?php include 'includes/layout_footer.php'; ?>
 
     <script>
-        if(new URLSearchParams(window.location.search).get('msg') === 'ok') {
-            Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Gasto registrado', showConfirmButton: false, timer: 3000 });
+    if(new URLSearchParams(window.location.search).get('msg') === 'ok') {
+        Swal.fire({ toast: true, position: 'top-end', icon: 'success', title: 'Gasto registrado', showConfirmButton: false, timer: 3000 });
+    }
+
+    function verTicket(gasto) {
+        // Formatos Moneda y Fecha
+        let montoF = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(gasto.monto);
+        let fechaObj = new Date(gasto.fecha);
+        let fechaF = fechaObj.toLocaleString('es-AR', { 
+            timeZone: 'America/Argentina/Buenos_Aires',
+            day: '2-digit', month: '2-digit', year: 'numeric', 
+            hour: '2-digit', minute: '2-digit'
+        });
+
+        // 1. LIMPIEZA VISUAL DE LA DESCRIPCIÓN
+        // Quitamos "(Cliente #XX)" y "Ticket #XX" para que no se repita con la info nueva
+        let descLimpia = gasto.descripcion
+            .replace(/\s*\(Cliente #\d+\)/, '') 
+            .replace(/Ticket #\d+/, ''); 
+
+        // 2. BLOQUE PERSONA (Beneficiario / Cliente)
+        let htmlPersona = '';
+        if (gasto.info_extra_nombre) {
+            htmlPersona = `
+                <div style="margin-bottom: 5px;">
+                    <strong>${gasto.info_extra_titulo}:</strong> 
+                    <span style="text-transform:uppercase;">${gasto.info_extra_nombre}</span>
+                </div>`;
         }
 
-        // FUNCIÓN DEL TICKET (MODAL)
-        function verTicket(gasto) {
-            // Formatear monto
-            let montoF = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(gasto.monto);
-            let fechaF = new Date(gasto.fecha).toLocaleString();
-
-            Swal.fire({
-                background: '#fff',
-                width: 350,
-                html: `
-                    <div style="font-family: 'Courier New', monospace; text-align: center; color: #000;">
-                        <h3 style="font-weight: bold; margin-bottom: 5px;">COMPROBANTE DE SALIDA</h3>
-                        <p style="font-size: 12px; margin-bottom: 15px;">#ID: ${gasto.id} - ${fechaF}</p>
-                        
-                        <div style="border-bottom: 2px dashed #ccc; margin: 10px 0;"></div>
-                        
-                        <div style="text-align: left; margin: 10px 0;">
-                            <p style="margin: 5px 0;"><strong>RESPONSABLE:</strong><br>${gasto.usuario}</p>
-                            <p style="margin: 5px 0;"><strong>CONCEPTO:</strong><br>${gasto.descripcion}</p>
-                            <p style="margin: 5px 0;"><strong>CATEGORÍA:</strong><br>${gasto.categoria}</p>
-                        </div>
-                        
-                        <div style="border-bottom: 2px dashed #ccc; margin: 15px 0;"></div>
-                        
-                        <h1 style="color: #dc3545; font-weight: bold; margin: 10px 0;">-${montoF}</h1>
-                        
-                        <div style="border-bottom: 2px dashed #ccc; margin: 15px 0;"></div>
-                        
-                        <p style="font-size: 11px; font-style: italic;">Comprobante interno no válido como factura fiscal.</p>
-                    </div>
-                `,
-                showCloseButton: true,
-                showConfirmButton: false,
-                backdrop: `rgba(0,0,0,0.6)`
+        // 3. BLOQUE LISTA DE ITEMS (Receta o Devolución)
+        let htmlItems = '';
+        if (gasto.lista_items && gasto.lista_items.length > 0) {
+            htmlItems += `<div style="margin-top:10px; border-top: 1px dotted #ccc; padding-top:5px;">`;
+            htmlItems += `<small style="font-weight:bold; text-decoration:underline;">${gasto.lista_items_titulo}:</small><br>`;
+            
+            gasto.lista_items.forEach(item => {
+                let montoItem = new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(item.monto);
+                htmlItems += `<div style="display:flex; justify-content:space-between; font-size:11px;">
+                    <span>${parseFloat(item.cantidad)}x ${item.descripcion}</span>
+                    <span>${montoItem}</span>
+                </div>`;
             });
+            htmlItems += `</div>`;
         }
-    </script>
+
+        // ARMADO DEL TICKET
+        Swal.fire({
+            background: '#fff',
+            width: 380,
+            html: `
+                <div style="font-family: 'Courier New', monospace; text-align: left; color: #000; font-size: 13px;">
+                    <div style="text-align: center; border-bottom: 2px dashed #000; padding-bottom: 10px; margin-bottom: 15px;">
+                        <h3 style="font-weight: bold; margin: 0;">COMPROBANTE GASTO</h3>
+                        <small>ID OPERACIÓN: #${gasto.id}</small><br>
+                        <small>${fechaF}</small>
+                    </div>
+
+                    <div style="margin-bottom: 5px;">
+                        <strong>RESPONSABLE:</strong> ${gasto.usuario ? gasto.usuario.toUpperCase() : 'ADMIN'}
+                    </div>
+                    
+                    ${htmlPersona}
+                    
+                    <div style="border-bottom: 1px dashed #ccc; margin: 10px 0;"></div>
+
+                    <div style="margin-bottom: 10px;">
+                        <strong>CATEGORÍA:</strong> ${gasto.categoria}<br>
+                        <strong>DETALLE:</strong><br>
+                        ${descLimpia}
+                        ${htmlItems}
+                    </div>
+
+                    <div style="border-top: 2px dashed #000; margin-top: 15px; padding-top: 10px; display:flex; justify-content:space-between; align-items:center;">
+                        <span style="font-size: 1.2em; font-weight:bold;">TOTAL:</span>
+                        <span style="font-size: 1.4em; font-weight:bold; color: #dc3545;">-${montoF}</span>
+                    </div>
+                </div>
+            `,
+            showCloseButton: true,
+            showConfirmButton: false
+        });
+    }
+</script>
 </body>
 </html>

@@ -1,10 +1,13 @@
 <?php
 session_start();
-require_once '../includes/db.php'; // Ajusta la ruta si es necesario
+// CORRECCIÓN: Al estar en la carpeta 'acciones', salimos una atrás (../) para buscar includes
+require_once '../includes/db.php'; 
 
-if (!isset($_SESSION['usuario_id'])) { die(json_encode(['status'=>'error'])); }
+if (!isset($_SESSION['usuario_id'])) { die(json_encode(['status'=>'error', 'msg'=>'Sesión no iniciada'])); }
 
 $data = json_decode(file_get_contents('php://input'), true);
+if (!$data) { die(json_encode(['status'=>'error', 'msg'=>'Datos no recibidos'])); }
+
 $nombre_ref = $data['referencia'];
 $carrito = $data['carrito'];
 $total = $data['total'];
@@ -29,7 +32,7 @@ try {
     $conexion->commit();
     echo json_encode(['status'=>'success']);
 } catch (Exception $e) {
-    $conexion->rollBack();
+    if($conexion->inTransaction()) $conexion->rollBack();
     echo json_encode(['status'=>'error', 'msg'=>$e->getMessage()]);
 }
 ?>

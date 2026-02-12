@@ -3,7 +3,7 @@
 -- https://www.phpmyadmin.net/
 --
 -- Servidor: 127.0.0.1:3306
--- Tiempo de generación: 11-02-2026 a las 19:41:23
+-- Tiempo de generación: 12-02-2026 a las 02:21:03
 -- Versión del servidor: 11.8.3-MariaDB-log
 -- Versión de PHP: 7.2.34
 
@@ -64,7 +64,8 @@ CREATE TABLE `asistencia` (
 --
 
 INSERT INTO `asistencia` (`id`, `id_usuario`, `ingreso`, `egreso`) VALUES
-(1, 1, '2026-02-11 18:08:13', NULL);
+(1, 1, '2026-02-11 18:08:13', NULL),
+(2, 1, '2026-02-12 02:19:55', NULL);
 
 -- --------------------------------------------------------
 
@@ -197,7 +198,8 @@ INSERT INTO `auditoria` (`id`, `fecha`, `id_usuario`, `accion`, `detalles`) VALU
 (110, '2026-02-11 19:13:26', 1, 'CANJE', 'Canje Cupón $0.00 (-10 pts)'),
 (111, '2026-02-11 19:18:04', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)'),
 (112, '2026-02-11 19:29:52', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)'),
-(113, '2026-02-11 19:34:09', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)');
+(113, '2026-02-11 19:34:09', 1, 'CANJE', 'Canje Cupón $0.00 (-1 pts)'),
+(114, '2026-02-11 19:52:38', 1, 'CANJE', 'Canje Producto: fede (-1 pts)');
 
 -- --------------------------------------------------------
 
@@ -318,7 +320,7 @@ CREATE TABLE `clientes` (
 
 INSERT INTO `clientes` (`id`, `nombre`, `dni_cuit`, `email`, `password`, `telefono`, `direccion`, `foto_perfil`, `fecha_nacimiento`, `recibir_notificaciones`, `limite_credito`, `saldo_deudor`, `puntos_acumulados`, `fecha_registro`, `whatsapp`, `dni`, `usuario`, `saldo_actual`, `saldo_favor`) VALUES
 (1, 'Consumidor Final', '00000000', NULL, NULL, '', NULL, 'default_user.png', '2026-02-11', 1, 0.00, 0.00, 0, '2026-01-26 11:15:20', NULL, '', NULL, 0.00, 0.00),
-(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', '$2y$10$IlXiIWtc20a46LntcZ9T/Ovr3m9nkPRgiRN44/.SE3ey8CHUVRRRy', NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 27, '2026-01-26 16:43:33', '+5491166116861', '35911753', NULL, 0.00, 0.00),
+(3, 'Juan Perez', NULL, 'gonzalezmarcelo159@gmail.com', '$2y$10$IlXiIWtc20a46LntcZ9T/Ovr3m9nkPRgiRN44/.SE3ey8CHUVRRRy', NULL, 'Teniente Primero Bustos Manuel Oscar, 370 Viviendas III Etapa, Alto Comedero, Municipio de San Salvador de Jujuy, Departamento Doctor Manuel Belgrano, Jujuy, Y4600AXX, Argentina', 'default_user.png', NULL, 1, 0.00, 0.00, 26, '2026-01-26 16:43:33', '+5491166116861', '35911753', NULL, 0.00, 0.00),
 (5, 'Federico', '24651315', NULL, NULL, '', 'Alto Comedero', 'default_user.png', NULL, 1, 10000.00, 0.00, 20, '2026-01-28 15:04:43', '1166116861', '', NULL, 0.00, 0.00),
 (6, 'Prueba Registro', '35975342', NULL, NULL, NULL, 'Altus', 'default_user.png', NULL, 1, 0.00, 0.00, 18, '2026-01-29 20:59:30', '1166116861', NULL, NULL, 0.00, 0.00),
 (7, 'Soy nuevo con puntos', NULL, NULL, '$2y$10$R6Iz8tpZEx3wk2h/df3omOW4GUsPLH3lv5o2fYJmL.eos.oqKPeDK', '1166116861', NULL, 'default_user.png', NULL, 1, 0.00, 0.00, 0, '2026-02-05 23:06:33', NULL, '35911754', NULL, 0.00, 0.00),
@@ -681,7 +683,9 @@ INSERT INTO `gastos` (`id`, `descripcion`, `monto`, `categoria`, `fecha`, `id_us
 (4, 'Devolución Efectivo Ticket #63', 3200.00, 'Devoluciones', '2026-02-09 12:35:01', 1, 7),
 (5, 'Devolución Efectivo Ticket #65', 11500.00, 'Devoluciones', '2026-02-09 17:06:26', 1, 8),
 (6, 'Compras', 200.00, 'Servicios', '2026-02-09 20:17:00', 1, 8),
-(7, 'Prueba gasto ', 2000.00, 'Insumos', '2026-02-10 10:53:04', 1, 8);
+(7, 'Prueba gasto ', 2000.00, 'Insumos', '2026-02-10 10:53:04', 1, 8),
+(8, 'Costo Canje Fidelización: fede (Cliente #3)', 9765.00, 'Fidelizacion', '2026-02-11 19:52:38', 1, 12),
+(9, 'adelando nora', 5000.00, 'Sueldos', '2026-02-11 19:54:25', 1, 12);
 
 -- --------------------------------------------------------
 
@@ -861,7 +865,7 @@ CREATE TABLE `premios` (
 --
 
 INSERT INTO `premios` (`id`, `nombre`, `puntos_necesarios`, `stock`, `activo`, `es_cupon`, `monto_dinero`, `id_articulo`, `tipo_articulo`) VALUES
-(22, 'fedede', 1, 10, 1, 1, 0.00, NULL, 'ninguno');
+(23, 'fede', 1, 9, 1, 0, 0.00, 17, 'combo');
 
 -- --------------------------------------------------------
 
@@ -898,9 +902,9 @@ CREATE TABLE `productos` (
 --
 
 INSERT INTO `productos` (`id`, `codigo_barras`, `descripcion`, `descripcion_larga`, `id_categoria`, `id_proveedor`, `tipo`, `precio_costo`, `precio_venta`, `precio_oferta`, `stock_actual`, `stock_minimo`, `imagen_url`, `es_destacado_web`, `es_apto_celiaco`, `es_apto_vegano`, `activo`, `fecha_vencimiento`, `dias_alerta`, `es_vegano`, `es_celiaco`) VALUES
-(2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1890.00, 2730.00, NULL, 34.000, 10.000, 'uploads/prod_1770255531_532.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
+(2, '7790895000997', 'Coca-Cola Sabor Original 2.25L', NULL, 1, 1, 'unitario', 1890.00, 2730.00, NULL, 33.000, 10.000, 'uploads/prod_1770255531_532.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (3, '7790895001000', 'Coca-Cola Zero 2.25L', NULL, 1, 1, 'unitario', 1575.00, 3150.00, NULL, 11.000, 5.000, 'uploads/prod_1770255526_425.png', 0, 1, 1, 1, NULL, NULL, 1, 1),
-(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7875.00, 12075.00, NULL, 86.000, 10.000, 'uploads/prod_1770255511_248.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
+(4, '7790895066665', 'Fernet Branca 750ml', NULL, 1, 1, 'unitario', 7875.00, 12075.00, NULL, 85.000, 10.000, 'uploads/prod_1770255511_248.png', 1, 1, 1, 1, NULL, NULL, 0, 0),
 (5, '7790240032222', 'Cerveza Quilmes Clásica 473ml', NULL, 1, 1, 'unitario', 945.00, 1470.00, NULL, 86.000, 24.000, 'uploads/prod_1770255503_324.png', 1, 0, 1, 1, NULL, NULL, 0, 0),
 (6, '7792799000011', 'Agua Mineral Villavicencio 1.5L', NULL, 1, 1, 'unitario', 630.00, 1155.00, NULL, 48.000, 10.000, 'uploads/prod_1770255428_805.png', 0, 1, 1, 1, NULL, NULL, 0, 0),
 (7, '7791234567890', 'Monster Energy Green 473ml', NULL, 1, 1, 'unitario', 1155.00, 1890.00, NULL, 6.000, 6.000, 'uploads/prod_1770255423_790.png', 1, 0, 1, 1, NULL, NULL, 0, 0),
@@ -1592,13 +1596,13 @@ ALTER TABLE `afip_config`
 -- AUTO_INCREMENT de la tabla `asistencia`
 --
 ALTER TABLE `asistencia`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=2;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=3;
 
 --
 -- AUTO_INCREMENT de la tabla `auditoria`
 --
 ALTER TABLE `auditoria`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=114;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=115;
 
 --
 -- AUTO_INCREMENT de la tabla `bienes_uso`
@@ -1664,7 +1668,7 @@ ALTER TABLE `encuestas`
 -- AUTO_INCREMENT de la tabla `gastos`
 --
 ALTER TABLE `gastos`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=8;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=10;
 
 --
 -- AUTO_INCREMENT de la tabla `mermas`
@@ -1700,7 +1704,7 @@ ALTER TABLE `permisos`
 -- AUTO_INCREMENT de la tabla `premios`
 --
 ALTER TABLE `premios`
-  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=23;
+  MODIFY `id` int(11) NOT NULL AUTO_INCREMENT, AUTO_INCREMENT=24;
 
 --
 -- AUTO_INCREMENT de la tabla `productos`

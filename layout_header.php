@@ -125,12 +125,15 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <ul class="dropdown-menu shadow-sm">
                         <li><a class="dropdown-item" href="ventas.php"><i class="bi bi-cart4 text-success"></i> Nueva Venta</a></li>
                         <li><a class="dropdown-item" href="cierre_caja.php"><i class="bi bi-calculator"></i> Cerrar Caja</a></li>
+                        <li><a class="dropdown-item" href="historial_cajas.php"><i class="bi bi-clock-history text-primary"></i> Historial de Cajas</a></li>
                         <?php if($rol_usuario <= 2): ?>
                         <li><hr class="dropdown-divider"></li>
                         <li><a class="dropdown-item" href="devoluciones.php"><i class="bi bi-arrow-counterclockwise text-danger"></i> Devoluciones</a></li>
+                        
                         <?php endif; ?>
                     </ul>
                 </li>
+                
 
                 <li class="nav-item dropdown">
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">INVENTARIO</a>
@@ -174,6 +177,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                     <a class="nav-link dropdown-toggle" href="#" data-bs-toggle="dropdown">MARKETING</a>
                     <ul class="dropdown-menu shadow-sm">
                         <li><a class="dropdown-item" href="gestionar_cupones.php"><i class="bi bi-ticket-perforated text-success"></i> Cupones</a></li>
+                        <li><a class="dropdown-item" href="sorteos.php"><i class="bi bi-ticket-detailed-fill text-danger"></i> Sorteos y Rifas</a></li>
                         <li><a class="dropdown-item" href="admin_revista.php"><i class="bi bi-newspaper"></i> Gestor Revistas</a></li>
                         <li><a class="dropdown-item" href="revista_builder.php"><i class="bi bi-magic"></i> Constructor Builder</a></li>
                         <li><hr class="dropdown-divider"></li>
@@ -188,6 +192,7 @@ $current_page = basename($_SERVER['PHP_SELF']);
                         <li><a class="dropdown-item" href="configuracion.php"><i class="bi bi-sliders"></i> Configuración Global</a></li>
                         <li><a class="dropdown-item" href="usuarios.php"><i class="bi bi-shield-lock"></i> Usuarios y Roles</a></li>
                         <li><a class="dropdown-item" href="auditoria.php"><i class="bi bi-eye text-danger"></i> Auditores / Sistema</a></li>
+                        <li><a class="dropdown-item" href="restaurar_sistema.php"><i class="bi bi-clock-history text-info"></i> Restaurar Backups</a></li>
                     </ul>
                 </li>
                 <?php endif; ?>

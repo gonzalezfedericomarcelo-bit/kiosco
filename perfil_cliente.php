@@ -174,6 +174,9 @@ $_SESSION['cliente_foto'] = $cliente['foto_perfil'];
                 <?php echo $mensaje; ?>
             </div>
         <?php endif; ?>
+        <a href="cliente_sorteos.php" class="btn btn-warning w-100 mb-4 rounded-pill fw-bold py-3 shadow text-dark text-uppercase">
+    <i class="bi bi-ticket-detailed-fill me-2 fs-5"></i> Ver mis Rifas y Sorteos
+</a>
 
         <div class="form-card">
             <h5 class="fw-bold mb-4 text-secondary"><i class="bi bi-person-gear"></i> Mis Datos</h5>

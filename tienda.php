@@ -1,5 +1,5 @@
 <?php
-// tienda.php - VERSIÓN FINAL: WHATSAPP PRO + DATOS CLIENTE
+// tienda.php - VERSIÓN FINAL: COLOR SINCRONIZADO CON CONFIGURACIÓN
 session_start();
 require_once 'includes/db.php';
 
@@ -11,7 +11,7 @@ if(isset($_SESSION['cliente_id'])) {
     $cliente_logueado = $stmtCli->fetch(PDO::FETCH_ASSOC);
 }
 
-// 2. CONFIGURACIÓN (RECUPERAMOS EL WHATSAPP ESPECIAL)
+// 2. CONFIGURACIÓN (RECUPERAMOS EL WHATSAPP ESPECIAL Y EL COLOR)
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 
 // Prioridad: 1. WhatsApp Pedidos, 2. Teléfono General, 3. Vacío
@@ -49,10 +49,11 @@ $stmt = $conexion->prepare($sql);
 $stmt->execute($params);
 $productos = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-// DISEÑO
-$color_pri = $conf['color_botones'] ?? '#0d6efd';
-$color_sec = $conf['color_secundario'] ?? '#0dcaf0'; 
-$deg_dir = $conf['direccion_degradado'] ?? '135deg';
+// --- DISEÑO (CORREGIDO: TOMA EL COLOR DE LA BASE DE DATOS) ---
+$color_db = $conf['color_principal'] ?? '#102A57'; // Color por defecto si no hay nada
+$color_pri = $color_db;
+$color_sec = $color_db; // Usamos el mismo para mantener consistencia, o podrías aclararlo
+$deg_dir = '135deg';
 ?>
 <!DOCTYPE html>
 <html lang="es">
@@ -65,7 +66,16 @@ $deg_dir = $conf['direccion_degradado'] ?? '135deg';
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Poppins', sans-serif; background-color: #f4f6f9; padding-bottom: 80px; }
-        .hero-banner { background: linear-gradient(<?php echo $deg_dir; ?>, <?php echo $color_pri; ?>, <?php echo $color_sec; ?>); color: white; padding: 30px 20px; border-radius: 0 0 25px 25px; margin-bottom: 20px; text-align: center; }
+        /* BANNER DINÁMICO CON TU COLOR */
+        .hero-banner { 
+            background: <?php echo $color_pri; ?>; /* Fallback solido */
+            background: linear-gradient(<?php echo $deg_dir; ?>, <?php echo $color_pri; ?>, <?php echo $color_sec; ?>); 
+            color: white; 
+            padding: 30px 20px; 
+            border-radius: 0 0 25px 25px; 
+            margin-bottom: 20px; 
+            text-align: center; 
+        }
         .card-producto { border: none; border-radius: 15px; overflow: hidden; background: white; box-shadow: 0 4px 6px rgba(0,0,0,0.02); transition: transform 0.2s; height: 100%; }
         .img-container { height: 180px; width: 100%; background-color: #fff; display: flex; align-items: center; justify-content: center; position: relative; }
         .img-producto { max-height: 150px; max-width: 90%; object-fit: contain; }

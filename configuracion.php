@@ -1,5 +1,5 @@
 <?php
-// configuracion.php - VERSIÓN INTEGRAL CON WIDGETS DE ESTADO
+// configuracion.php - VERSIÓN CORREGIDA CON SELECTOR DE COLOR
 session_start();
 
 // Buscador de conexión estándar
@@ -21,11 +21,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_general'])) {
     $cuit = trim($_POST['cuit']);
     $mensaje = trim($_POST['mensaje_ticket']);
     
+    // NUEVO: Color del sistema
+    $color_principal = $_POST['color_principal'] ?? '#102A57';
+
     $mod_cli = isset($_POST['modulo_clientes']) ? 1 : 0;
     $mod_stk = isset($_POST['modulo_stock']) ? 1 : 0;
     $mod_rep = isset($_POST['modulo_reportes']) ? 1 : 0;
     $mod_fid = isset($_POST['modulo_fidelizacion']) ? 1 : 0;
-    // NUEVAS FUNCIONES
+    
     $stock_use_global = isset($_POST['stock_use_global']) ? 1 : 0;
     $stock_global_valor = intval($_POST['stock_global_valor'] ?? 5);
     $ticket_modo = $_POST['ticket_modo'] ?? 'afip';
@@ -44,18 +47,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_general'])) {
         }
     }
 
+   // ACTUALIZAMOS LA BASE DE DATOS INCLUYENDO EL COLOR
    $sql = "UPDATE configuracion SET 
             nombre_negocio=?, direccion_local=?, telefono_whatsapp=?, whatsapp_pedidos=?, cuit=?, mensaje_ticket=?, 
             modulo_clientes=?, modulo_stock=?, modulo_reportes=?, modulo_fidelizacion=?, logo_url=?,
             dias_alerta_vencimiento=?, dinero_por_punto=?,
-            stock_use_global=?, stock_global_valor=?, ticket_modo=?, redondeo_auto=?
+            stock_use_global=?, stock_global_valor=?, ticket_modo=?, redondeo_auto=?,
+            color_principal=? 
             WHERE id=1";
 
     $conexion->prepare($sql)->execute([
         $nombre, $direccion, $telefono, $wa_pedidos, $cuit, $mensaje, 
         $mod_cli, $mod_stk, $mod_rep, $mod_fid, $logo_url,
         $dias_alerta, $dinero_punto,
-        $stock_use_global, $stock_global_valor, $ticket_modo, $redondeo_auto
+        $stock_use_global, $stock_global_valor, $ticket_modo, $redondeo_auto,
+        $color_principal
     ]);
     
     header("Location: configuracion.php?msg=guardado"); exit;
@@ -99,15 +105,25 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['guardar_afip'])) {
 $conf = $conexion->query("SELECT * FROM configuracion WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 $afip = $conexion->query("SELECT * FROM afip_config WHERE id=1")->fetch(PDO::FETCH_ASSOC);
 
+// Color por defecto si no existe en BD
+$color_sistema = $conf['color_principal'] ?? '#102A57';
+
 include 'includes/layout_header.php'; 
 ?>
 
 <style>
-    .header-blue { background-color: #102A57; color: white; padding: 40px 0; border-radius: 0 0 30px 30px; position: relative; overflow: hidden; margin-bottom: 25px; }
+    .header-blue { 
+        background-color: <?php echo $color_sistema; ?> !important; 
+        color: white; 
+        padding: 40px 0; 
+        border-radius: 0 0 30px 30px; 
+        position: relative; 
+        overflow: hidden; 
+        margin-bottom: 25px; 
+    }
     .bg-icon-large { position: absolute; top: 50%; right: 20px; transform: translateY(-50%) rotate(-10deg); font-size: 10rem; opacity: 0.1; color: white; pointer-events: none; }
     .nav-tabs .nav-link { color: #6c757d; font-weight: 600; border: none; }
-    .nav-tabs .nav-link.active { color: #102A57; border-bottom: 3px solid #102A57; background: transparent; }
-    /* Estilo para los widgets en el banner */
+    .nav-tabs .nav-link.active { color: <?php echo $color_sistema; ?>; border-bottom: 3px solid <?php echo $color_sistema; ?>; background: transparent; }
     .stat-card { border: none; border-radius: 15px; padding: 15px 20px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); background: white; height: 100%; display: flex; align-items: center; justify-content: space-between; }
     .icon-box { width: 45px; height: 45px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.4rem; }
 </style>
@@ -216,6 +232,7 @@ include 'includes/layout_header.php';
                                     <input type="number" name="dias_alerta_vencimiento" class="form-control" value="<?php echo $conf['dias_alerta_vencimiento']; ?>">
                                 </div>
                                 <div class="col-12"><hr></div>
+                                
                                 <div class="col-md-6">
                                     <label class="small fw-bold">Logo del Ticket</label>
                                     <input type="file" name="logo" class="form-control">
@@ -224,16 +241,27 @@ include 'includes/layout_header.php';
                                     <?php endif; ?>
                                 </div>
                                 <div class="col-md-6">
+                                    <label class="small fw-bold">Color del Sistema / Banner</label>
+                                    <div class="input-group">
+                                        <input type="color" name="color_principal" class="form-control form-control-color" value="<?php echo $color_sistema; ?>" title="Elige un color">
+                                        <span class="input-group-text small bg-white text-muted">Personaliza tu tienda</span>
+                                    </div>
+                                </div>
+
+                                <div class="col-md-12">
+                                    <hr>
                                     <label class="small fw-bold mb-2 d-block">Módulos y Alertas</label>
-                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_stock" <?php echo $conf['modulo_stock']?'checked':''; ?>><label class="small ms-2">Módulo Stock</label></div>
-                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_clientes" <?php echo $conf['modulo_clientes']?'checked':''; ?>><label class="small ms-2">Módulo Clientes</label></div>
-                                    <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_fidelizacion" <?php echo $conf['modulo_fidelizacion']?'checked':''; ?>><label class="small ms-2">Módulo Puntos</label></div>
+                                    <div class="d-flex flex-wrap gap-4">
+                                        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_stock" <?php echo $conf['modulo_stock']?'checked':''; ?>><label class="small ms-2">Stock</label></div>
+                                        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_clientes" <?php echo $conf['modulo_clientes']?'checked':''; ?>><label class="small ms-2">Clientes</label></div>
+                                        <div class="form-check form-switch"><input class="form-check-input" type="checkbox" name="modulo_fidelizacion" <?php echo $conf['modulo_fidelizacion']?'checked':''; ?>><label class="small ms-2">Puntos</label></div>
+                                    </div>
                                     <hr class="my-2">
                                     <div class="form-check form-switch">
                                         <input class="form-check-input" type="checkbox" name="stock_use_global" <?php echo $conf['stock_use_global']?'checked':''; ?>>
                                         <label class="small ms-2 fw-bold text-primary">Usar Alerta Stock Global</label>
                                     </div>
-                                    <div class="input-group input-group-sm mt-1">
+                                    <div class="input-group input-group-sm mt-1" style="max-width: 300px;">
                                         <span class="input-group-text">Avisar con:</span>
                                         <input type="number" name="stock_global_valor" class="form-control" value="<?php echo $conf['stock_global_valor']; ?>">
                                         <span class="input-group-text">unidades</span>
